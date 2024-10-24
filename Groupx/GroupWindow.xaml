@@ -38,7 +38,7 @@
                   Background="#7FFFFFFF" MouseRightButtonUp="GroupList_MouseRightButtonUp">
             <ListView.ItemContainerStyle>
                 <Style TargetType="{x:Type ListBoxItem}">
-                    <Setter Property="Margin" Value="10,10,0,0" />
+                    <Setter Property="Margin" Value="5,5,0,0" />
                     <Setter Property="Padding" Value="0" />
                 </Style>
             </ListView.ItemContainerStyle>

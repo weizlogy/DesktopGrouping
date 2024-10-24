@@ -10,12 +10,12 @@
     <Grid>
         <StackPanel>
             <StackPanel Orientation="Horizontal" Margin="10,10,10,0">
-                <TextBlock Text="BGColor" Padding="0,0,10,0" VerticalAlignment="Center" />
+                <TextBlock Text="BGColor" Padding="0,0,10,0" VerticalAlignment="Center" Width="70" />
                 <colorpicker:PortableColorPicker x:Name="colorpicker" Width="200" />
                 <TextBlock Width="80" Text="{ Binding SelectedColor, ElementName=colorpicker }" Margin="10,0,0,0" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Margin="10,10,10,0">
-                <TextBlock Text="Opacity" Padding="0,0,15,0" VerticalAlignment="Center" />
+                <TextBlock Text="Opacity" Padding="0,0,15,0" VerticalAlignment="Center" Width="70" />
                 <Slider x:Name="opacity_slider" Minimum="0.01" Maximum="1" Width="200" />
                 <TextBlock Width="80" Text="{ Binding Value, ElementName=opacity_slider, StringFormat={}{0:p2} }" Margin="10,0,0,0" />
             </StackPanel>
