@@ -59,7 +59,10 @@ namespace Desktop_Grouping.Groupx {
       try {
         // ドラッグされたのが画像ファイルだったらこれでいい
         // そうじゃなければ例外が発生する（寧ろこっちが本命
-        Image = new BitmapImage(new Uri(Uri));
+        using var stream = new MemoryStream(File.ReadAllBytes(Uri));
+        Image = new WriteableBitmap(BitmapFrame.Create(stream));
+        // これだと例外発生しても参照を持ち続けるのでだめ
+        //   Image = new BitmapImage(new Uri(Uri));
       } catch {
         // ExtractByLowLevelFunctionsで取れなかったらExtractByExtractAssociatedIconで取得する感じ
         try {

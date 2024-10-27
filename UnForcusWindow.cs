@@ -60,7 +60,7 @@ namespace Desktop_Grouping {
         // WM_WINDOWPOSCHANGINGではマウス押下状態で前面に出てきてしまう
         if (msg == WM_WINDOWPOSCHANGED) {
           SetWindowPos(hWnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-          handled = true;
+          //handled = true;  // とかやると、LocationChanged event 発生しなくなるので......
         }
         return IntPtr.Zero;
       }));

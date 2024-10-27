@@ -76,7 +76,11 @@ namespace Desktop_Grouping {
     /// <param name="sender"></param>
     /// <param name="e"></param>
     private void ContentControl_MouseDoubleClick(object sender, MouseButtonEventArgs e) {
-      this.vm.GroupExecute(((Groupx.GroupItem)this.GroupList.SelectedItem).Uri);
+      try {
+        this.vm.GroupExecute(((Groupx.GroupItem)this.GroupList.SelectedItem).Uri);
+      } catch (Exception ex) {
+        MessageBox.Show(ex.Message);
+      }
     }
 
     /// <summary>

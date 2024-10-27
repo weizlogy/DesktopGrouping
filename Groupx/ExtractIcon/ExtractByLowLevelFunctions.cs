@@ -140,6 +140,9 @@ namespace Desktop_Grouping.Groupx.ExtractIcon {
     [DllImport("comctl32.dll", SetLastError = true)]
     public static extern IntPtr ImageList_GetIcon(IntPtr himl, int i, int flags);
 
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    extern static bool DestroyIcon(IntPtr handle);
+
     // interface COM IImageList
     [ComImportAttribute()]
     [GuidAttribute("46EB5926-582E-4017-9FDF-E8998DAA0950")]
@@ -199,6 +202,7 @@ namespace Desktop_Grouping.Groupx.ExtractIcon {
       imglist.GetIcon(shinfo.iIcon, (int)ImageListDrawItemConstants.ILD_TRANSPARENT, ref hicon);
 
       using Icon myIcon = Icon.FromHandle(hicon);
+      DestroyIcon(shinfo.iIcon);
       return ToBitmapSource(myIcon);
     }
 
