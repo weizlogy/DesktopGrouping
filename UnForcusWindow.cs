@@ -25,8 +25,8 @@ namespace Desktop_Grouping {
     private const int GWL_EX_STYLE = -20;
     private const int WS_EX_APPWINDOW = 0x00040000, WS_EX_TOOLWINDOW = 0x00000080;
 
-    /// wpf 最背面
-    ///   https://gurizuri0505.halfmoon.jp/develop/csharp/zorder
+    // wpf 最背面
+    //   https://gurizuri0505.halfmoon.jp/develop/csharp/zorder
     [DllImport("user32.dll", SetLastError = true)]
     static extern IntPtr FindWindow(string? lpClassName, string lpWindowName);
     [DllImport("user32.dll")]
@@ -37,6 +37,12 @@ namespace Desktop_Grouping {
     const UInt32 SWP_NOACTIVATE = 0x0010;
     const int WM_WINDOWPOSCHANGING = 0x0046;
     const uint WM_WINDOWPOSCHANGED = 0x0047;
+
+    // wpf 最背面 Windows+D 対策
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    static extern IntPtr FindWindowEx(IntPtr hP, IntPtr hC, string sC, string? sW);
 
     /// <summary>
     /// フォーカスを取らないようにする
@@ -54,16 +60,23 @@ namespace Desktop_Grouping {
     /// </summary>
     /// <param name="window"></param>
     public void BackMost(Window window) {
+      var myHandle = new WindowInteropHelper(window).Handle;
+
+      // https://stackoverflow.com/questions/10009623/keeping-window-visible-through-show-desktop-wind
+      IntPtr nWinHandle = FindWindowEx(IntPtr.Zero, IntPtr.Zero, "Progman", null);
+      nWinHandle = FindWindowEx(nWinHandle, IntPtr.Zero, "SHELLDLL_DefView", null);
+      SetParent(myHandle, nWinHandle);
+
       // https://mamesfactory.com/790/
-      HwndSource source = HwndSource.FromHwnd(new WindowInteropHelper(window).Handle);
-      source.AddHook(new HwndSourceHook((IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) => {
-        // WM_WINDOWPOSCHANGINGではマウス押下状態で前面に出てきてしまう
-        if (msg == WM_WINDOWPOSCHANGED) {
-          SetWindowPos(hWnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-          //handled = true;  // とかやると、LocationChanged event 発生しなくなるので......
-        }
-        return IntPtr.Zero;
-      }));
+      //HwndSource source = HwndSource.FromHwnd(myHandle);
+      //source.AddHook(new HwndSourceHook((IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) => {
+      //  // WM_WINDOWPOSCHANGINGではマウス押下状態で前面に出てきてしまう
+      //  if (msg == WM_WINDOWPOSCHANGED) {
+      //    SetWindowPos(hWnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+      //    //handled = true;  // とかやると、LocationChanged event 発生しなくなるので......
+      //  }
+      //  return IntPtr.Zero;
+      //}));
     }
 
   }

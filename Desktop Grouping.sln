@@ -5,8 +5,6 @@ VisualStudioVersion = 17.11.35303.130
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Desktop Grouping", "Desktop Grouping.csproj", "{A4A6EDAE-61B5-478A-B16D-7E30410733AD}"
 EndProject
-Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "DesktopGrouping installer", "..\DesktopGrouping installer\DesktopGrouping installer.vdproj", "{79A60626-AA02-4C68-BF8F-05B2CA916548}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
