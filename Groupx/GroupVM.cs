@@ -9,6 +9,7 @@ using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -54,6 +55,7 @@ namespace Desktop_Grouping.Groupx {
     /// </summary>
     /// <param name="isForce"></param>
     public async void GroupChanged(bool isForce = false) {
+      Debug.WriteLine("★GroupChanged called");
       if (string.IsNullOrEmpty(Group.GroupID)) {
         return;
       }
@@ -83,7 +85,8 @@ namespace Desktop_Grouping.Groupx {
     /// <summary>
     /// Groupの状態を復元する
     /// </summary>
-    public void GroupRestore() {
+    public void GroupRestore(int defviewtop) {
+      Debug.WriteLine($"★GroupRestore called { Group.GroupID }");
       if (string.IsNullOrEmpty(Group.GroupID)) {
         return;
       }
@@ -105,10 +108,12 @@ namespace Desktop_Grouping.Groupx {
       Group.BGColor = group.BGColor;
       Group.Opacity = group.Opacity;
       // Group -> View
-      View.Top = Group.Coordinates.Top;
+      View.InvalidateMeasure();
+      View.Top = Group.Coordinates.Top - defviewtop;
       View.Left = Group.Coordinates.Left;
       View.Width = Group.Coordinates.Width;
       View.Height = Group.Coordinates.Height;
+      View.UpdateLayout();
       View.Background =
         new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(Group.BGColor));
       View.Opacity = Group.Opacity;

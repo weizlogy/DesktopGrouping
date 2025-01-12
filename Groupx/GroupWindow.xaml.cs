@@ -62,11 +62,13 @@ namespace Desktop_Grouping {
     /// <param name="sender"></param>
     /// <param name="e"></param>
     private void Window_Loaded(object sender, RoutedEventArgs e) {
-      this.ufw.BackMost(this);
+      // Focusなし
       this.ufw.UnForcus(this);
+      // 背面行き
+      this.ufw.BackMost(this);
       // ID取得、復元
       this.vm.Group.GroupID = this.Uid;
-      this.vm.GroupRestore();
+      this.vm.GroupRestore(this.ufw.SHELLDLLDefViewRectTop);
       this.isWindowLoaded = true;
     }
 

@@ -9,6 +9,7 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>assets\stainedglassalpaca_highreso_7SD_icon.ico</ApplicationIcon>
     <Company>Weizlogy</Company>
+    <FileVersion>1.0.0.1</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

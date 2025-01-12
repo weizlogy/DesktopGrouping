@@ -16,6 +16,8 @@ namespace Desktop_Grouping {
   /// </summary>
   public class UnForcusWindow {
 
+    public int SHELLDLLDefViewRectTop { get; set; }
+
     // Hide a WPF form from Alt+Tab
     // https://stackoverflow.com/questions/56645242/hide-a-wpf-form-from-alttab
     [DllImport("user32.dll", SetLastError = true)]
@@ -44,6 +46,17 @@ namespace Desktop_Grouping {
     [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
     static extern IntPtr FindWindowEx(IntPtr hP, IntPtr hC, string sC, string? sW);
 
+    [DllImport("user32.dll")]
+    static extern bool GetWindowRect(IntPtr hwnd, out RECT lpRect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT {
+      public int left;
+      public int top;
+      public int right;
+      public int bottom;
+    }
+
     /// <summary>
     /// フォーカスを取らないようにする
     /// </summary>
@@ -66,6 +79,11 @@ namespace Desktop_Grouping {
       IntPtr nWinHandle = FindWindowEx(IntPtr.Zero, IntPtr.Zero, "Progman", null);
       nWinHandle = FindWindowEx(nWinHandle, IntPtr.Zero, "SHELLDLL_DefView", null);
       SetParent(myHandle, nWinHandle);
+
+      // デスクトップの原点が0,0でないっぽいので差分を取って復元時に調整する
+      RECT rect;
+      GetWindowRect(nWinHandle, out rect);
+      this.SHELLDLLDefViewRectTop = rect.top;
 
       // https://mamesfactory.com/790/
       //HwndSource source = HwndSource.FromHwnd(myHandle);
