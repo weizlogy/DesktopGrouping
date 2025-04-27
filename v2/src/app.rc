@@ -1,0 +1,5 @@
+// アイコンリソースを定義。IDI_MAINICON はリソース名 (数値でも良いが、文字列の方が分かりやすい)、
+// 1 はリソースID (数値)。どちらか、または両方で参照できる。
+// トレイアイコンで参照しやすいように、数値ID '1' も使っておく。
+IDI_MAINICON ICON "resource/stainedglassalpaca_highreso_7SD_icon.ico"
+1 ICON "resource/stainedglassalpaca_highreso_7SD_icon.ico"

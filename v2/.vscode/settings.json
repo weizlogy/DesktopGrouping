@@ -1,0 +1,9 @@
+{
+  "editor.autoIndent": "none",
+  "editor.indentSize": "tabSize",
+  "editor.tabSize": 2,
+  "rust-analyzer.inlayHints.typeHints.enable": true,
+  "rust-analyzer.inlayHints.parameterHints.enable": false,
+  "rust-analyzer.inlayHints.genericParameterHints.lifetime.enable": false,
+  "rust-analyzer.inlayHints.genericParameterHints.type.enable": false
+}
