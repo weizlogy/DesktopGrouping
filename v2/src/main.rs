@@ -1,4 +1,5 @@
-#![windows_subsystem = "windows"]
+// debugビルドでない場合（つまり release ビルドの場合）に "windows" サブシステムを使用
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod file_drag;
 mod logger;
