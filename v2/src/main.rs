@@ -168,8 +168,13 @@ fn main() {
                 }
                 MouseButton::Right => {
                   if state == ElementState::Pressed {
-                    // Ctrl+右クリックでのアイテム削除
+                    // Ctrl+右クリックでのアイテム削除 (remove_group_item内でCtrlチェック)
+                    // またはウィンドウ削除
                     manager.remove_group_item(window_id);
+                    // ★追加だよっ！: Ctrlなし右クリックで場所を開く処理♪
+                    if !manager.is_moving.keybord_pressed { // Ctrlキーが押されてないかなー？ってチェック！
+                      manager.open_icon_location(window_id);
+                    }
                   }
                 }
                 _ => {}

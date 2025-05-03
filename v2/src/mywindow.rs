@@ -692,6 +692,48 @@ impl WindowManager {
     }
   }
 
+  /// アイコンが右クリックされたときに、そのアイコンのファイルの場所をエクスプローラーで開くよ！
+  /// Ctrlキーが押されて *いない* 右クリックのときに呼ばれるんだ♪
+  ///
+  /// # 引数
+  ///
+  /// * `window_id` - どこのウィンドウで右クリックされたか教えてね！
+  pub fn open_icon_location(&mut self, window_id: WindowId) {
+      // まず、どこをクリックしたか思い出すよ (最後に記録したカーソル位置！)
+      if let Some(cursor_pos) = self.last_cursor_pos.get(&window_id).cloned() {
+          // その場所にアイコンがあるか探してみるね！ (find_icon_at_relative_pos におまかせ！)
+          if let Some((_icon_win_id, icon_index)) = self.find_icon_at_relative_pos(window_id, cursor_pos) {
+              // やったー！アイコン見っけ！ (ログにも記録しとこっと)
+              log_debug(&format!("RightClick on icon index {} in window {:?}. Opening location.", icon_index, window_id));
+              // そのアイコンの情報 (IconInfo) を取り出すよ！
+              if let Some(child) = self.children.get(&window_id) {
+                  if icon_index < child.groups.len() { // ちゃんとリストにあるインデックスかな？
+                      let icon_info = &child.groups[icon_index];
+                      // アイコンのパス (例: C:\Users\Me\Desktop\すごいファイル.txt) から、
+                      // そのファイルがいるフォルダ (例: C:\Users\Me\Desktop) を見つけるよ！
+                      if let Some(parent_dir) = icon_info.path.parent() {
+                          log_info(&format!("Opening location for {:?}: {:?}", icon_info.path, parent_dir));
+                          // 見つけたフォルダをエクスプローラーでオープン！ パソコンの中を探検だー！٩(ˊᗜˋ*)و
+                          match open::that(parent_dir) {
+                              Ok(_) => log_info(&format!("Successfully opened directory: {:?}", parent_dir)),
+                              Err(e) => log_error(&format!("Failed to open directory {:?}: {}", parent_dir, e)), // あれれ？開けなかった…(´・ω・`)
+                          }
+                      } else {
+                          // もし親フォルダが見つからなかったら (例: C:\ ドライブ自体とか？)、
+                          // そのパス自体を開いてみる！ ちょっとレアケースかも？
+                          log_warn(&format!("Could not get parent directory for path: {:?}. Attempting to open the path itself.", icon_info.path));
+                           match open::that(&icon_info.path) {
+                              Ok(_) => log_info(&format!("Successfully opened path: {:?}", icon_info.path)),
+                              Err(e) => log_error(&format!("Failed to open path {:?}: {}", icon_info.path, e)), // うーん、やっぱりダメだったか…
+                          }
+                      }
+                  } // icon_index < child.groups.len() の終わり
+              } // child が見つかった場合の終わり
+          } // アイコンが見つかった場合の終わり
+          // アイコンじゃない場所を右クリックしたときは、何もしないよ！ (ウィンドウ削除はCtrl+右クリックだけ！)
+      } // カーソル位置が取れた場合の終わり
+  }
+
   /// ウィンドウ削除の要求を受け付け、確認ダイアログを表示するメソッド。
   ///
   /// # 引数
