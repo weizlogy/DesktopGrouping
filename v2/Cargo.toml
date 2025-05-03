@@ -1,12 +1,12 @@
 [package]
 name = "desktop_grouping"
-version = "0.2.0"
+version = "2.0.0"
 edition = "2024"
 license = "MIT"
-homepage = ""
-repository = "https://github.com/weizlogy/Desktop-Grouping-v2"
+homepage = "https://blog.weizlogy.com/software/2024/10/25/desktopgrouping.html"
+repository = "https://github.com/weizlogy/Desktop-Grouping"
 readme = "README.md"
-description = "a sample winit app"
+description = "DesktopGrouping is a utility for Windows that helps to organize icons on the desktop like Fences and very simple style."
 authors = ["weizlogy"]
 
 [dependencies]
