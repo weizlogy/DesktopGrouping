@@ -9,7 +9,7 @@ mod settings;
 use std::rc::Rc;
 
 use arboard::Clipboard;
-use desktop_grouping_v2::tray::tray_icon::create_tray;
+use desktop_grouping::tray::tray_icon::create_tray;
 use file_drag::IconInfo;
 use logger::{log_debug, log_info};
 use mywindow::UserEvent;

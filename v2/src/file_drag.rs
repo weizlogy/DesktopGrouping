@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use desktop_grouping_v2::win32::ui_shell;
+use desktop_grouping::win32::ui_shell;
 use windows::Win32::Graphics::Gdi::BITMAPINFO;
 
 use crate::logger::{log_error, log_info};

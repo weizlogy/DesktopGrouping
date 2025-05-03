@@ -2,7 +2,7 @@ use std::{collections::HashMap, hash::{DefaultHasher, Hash, Hasher}, rc::Rc, tim
 
 use arboard::Clipboard;
 use colorsys::{Hsl, Rgb};
-use desktop_grouping_v2::{
+use desktop_grouping::{
   graphics::graphics::{parse_color, MyGraphics}, win32::ui_wam
 };
 

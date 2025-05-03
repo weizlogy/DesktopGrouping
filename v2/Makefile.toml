@@ -1,0 +1,21 @@
+# cargo-make の設定ファイルだよ！ ( `cargo make` で実行できる )
+
+[tasks.build-release]
+# まずはリリースビルドを実行するタスク
+description = "Compile the project in release mode."
+command = "cargo"
+args = ["build", "--release"]
+
+[tasks.create-installer]
+# リリースビルドが終わった後にインストーラーを作るタスク
+description = "Create the NSIS installer after release build."
+# build-release タスクが終わってから実行するように依存関係を設定！ これ大事！(๑•̀ •́)و✧
+dependencies = ["build-release"]
+# makensis コマンドを実行するよ (PATHが通ってる必要があるよ！)
+command = "makensis"
+# installer.nsi のパスを指定 (Makefile.tomlからの相対パス)
+args = ["installer.nsi"]
+
+[tasks.installer]
+# `cargo make installer` って打つだけで create-installer を実行できるようにするエイリアスだよ♪
+alias = "create-installer"
