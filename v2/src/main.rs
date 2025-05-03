@@ -16,7 +16,7 @@ use mywindow::UserEvent;
 
 // generate_child_id, ChildSettings など必要なものをインポート
 use settings::{
-  generate_child_id, get_settings_reader, get_settings_writer, save_settings, ChildSettings,
+  generate_child_id, get_settings_reader, get_settings_writer, ChildSettings,
 };
 use winit::{
   event::{DeviceEvent, ElementState, Event, MouseButton, MouseScrollDelta, StartCause, WindowEvent},
@@ -166,6 +166,7 @@ fn main() {
                   // ドラッグ移動開始
                   manager.start_dragging();
                 }
+                // --------------------------------------------------
                 MouseButton::Right => {
                   if state == ElementState::Pressed {
                     // Ctrl+右クリックでのアイテム削除 (remove_group_item内でCtrlチェック)
@@ -179,6 +180,12 @@ fn main() {
                 }
                 _ => {}
               }
+              // --- ★設定保存処理を追加 (移動/リサイズ完了時) ---
+              // マウスボタンが離された時、かつ移動またはリサイズ操作中だった場合に保存
+              if state == ElementState::Released && (manager.is_moving.keybord_pressed || manager.is_resizing.keybord_pressed) {
+                  log_debug(&format!("Mouse released after move/resize on window {:?}. Saving settings.", window_id));
+                  manager.save_child_settings(window_id);
+              }
             }
             WindowEvent::RedrawRequested => {
               // ウィンドウの再描画
@@ -187,6 +194,8 @@ fn main() {
             WindowEvent::Resized(size) => {
               // ウィンドウのリサイズ処理
               manager.resize(&window_id, size);
+              // リサイズイベント自体では保存しない (頻発するため)
+              // マウスボタン解放時 or カーソル離脱時に保存する
             }
             WindowEvent::DroppedFile(path) => {
               // ファイルドロップ時の処理
@@ -214,14 +223,14 @@ fn main() {
                 }
               }
               manager.set_last_cursor_window(None); // ★カーソルが離れたことを記録
-              // --- ★設定保存処理を追加 ---
-              log_debug(&format!("Cursor left window {:?}. Requesting settings save.", window_id));
-              manager.save_window_settings(window_id);
-              // --------------------------
+              // --- ★設定保存処理を追加 (カーソル離脱時) ---
+              // ドラッグ操作中かもしれないので、ここで保存するのが安全
+              log_debug(&format!("Cursor left window {:?}. Saving settings.", window_id));
+              manager.save_child_settings(window_id);
+              // -----------------------------------------
             }
-            WindowEvent::Moved(_position) => {
-              // ウィンドウ移動完了時のイベント (必要ならここで何か処理)
-              // 位置の保存は終了時に update_settings_from_windows で行う
+            WindowEvent::Moved( .. ) => {
+              // ウィンドウ移動完了時のイベント (ドラッグ以外での移動も検知)
               // log_debug(&format!("Window {:?} moved to {:?}", window_id, position));
             }
             _ => {} // 他のウィンドウイベントは無視
@@ -302,10 +311,7 @@ fn main() {
         }
         Event::LoopExiting => {
           log_info("Exiting application...");
-          // --- 終了前に現在のウィンドウ状態を設定に反映 ---
-          manager.update_settings_from_windows(); // <- まず設定を更新
-          // --- 設定をファイルに保存 ---
-          save_settings(); // <- 次に保存 (引数なし)
+          // --- 終了時の保存処理は不要になったよ！ ---
         }
         _ => {} // 他のイベントは無視
       }

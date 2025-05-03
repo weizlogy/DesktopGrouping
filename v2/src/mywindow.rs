@@ -75,7 +75,6 @@ pub struct ChildWindow {
   /// このウィンドウインスタンスを紐付けるためのユニークな文字列ID。
   /// 通常は生成時のタイムスタンプ。
   id_str: String,
-  needs_save: bool,
 }
 
 impl ChildWindow {
@@ -100,7 +99,6 @@ impl ChildWindow {
       graphics,
       groups: Vec::new(), // 最初は空のアイコンリスト
       id_str, // 引数で受け取ったIDを保存
-      needs_save: false, // 初期状態では保存は不要
     };
   }
 
@@ -115,8 +113,6 @@ impl ChildWindow {
       // 枠線色をグラフィックスに適用
       self.graphics.update_border_color(border_color);
 
-      // 設定保存フラグを立てる
-      self.needs_save = true;
       // 再描画を要求
       self.window.request_redraw();
       log_debug(&format!("Window {}: BG set to {}, Border calculated to {}", self.id_str, color_to_hex_string(bg_color), color_to_hex_string(border_color)));
@@ -148,34 +144,11 @@ impl ChildWindow {
       let border_color = calculate_border_color(new_bg_color, &self.id_str);
       self.graphics.update_border_color(border_color);
 
-      // 設定保存フラグを立てる
-      self.needs_save = true;
       // 再描画を要求
       self.window.request_redraw();
       log_debug(&format!(
         "Window {}: Alpha adjusted to {:.3}, Border recalculated to {}", 
         self.id_str, new_alpha, color_to_hex_string(border_color)));
-    }
-  }
-
-  /// 必要であれば、現在の色設定をグローバル設定に保存します。
-  pub fn save_settings_if_needed(&mut self) {
-    if self.needs_save {
-      let bg_color_str = color_to_hex_string(self.graphics.get_background_color());
-      let border_color_str = color_to_hex_string(self.graphics.get_border_color());
-
-      { // 設定書き込みロックのスコープ
-        let mut settings = get_settings_writer();
-        if let Some(child_settings) = settings.children.get_mut(&self.id_str) {
-          child_settings.bg_color = bg_color_str.clone();
-          child_settings.border_color = border_color_str.clone();
-          log_info(&format!("Window {}: Settings updated (BG: {}, Border: {})", self.id_str, bg_color_str, border_color_str));
-        } else {
-          log_error(&format!("Window {}: Failed to find settings entry for saving.", self.id_str));
-        }
-      } // ロック解放
-
-      self.needs_save = false; // 保存したのでフラグをリセット
     }
   }
 
@@ -333,10 +306,13 @@ impl WindowManager {
               // ChildWindow の set_background_color を呼び出す
               // set_background_color は &str を受け取るので、変換後の文字列を渡す
               child.set_background_color(&color_str);
-
+              // --- ★設定保存処理を追加 ---
+              self.save_child_settings(window_id);
             } else {
               // 通常の色コードがペーストされた場合 (既存の処理)
               child.set_background_color(trimmed_text);
+              // --- ★設定保存処理を追加 ---
+              self.save_child_settings(window_id);
             }
           }
         }
@@ -356,15 +332,12 @@ impl WindowManager {
       if let Some(child) = self.children.get_mut(&window_id) {
         // delta_y の符号で方向を判断 (正が上、負が下など、環境依存確認)
         // ここでは delta_y が正なら増加、負なら減少と仮定
+        let old_alpha = child.graphics.get_background_color().alpha(); // 保存前に現在のアルファ値を取得
         child.adjust_alpha(delta_y);
-      }
-    }
-  }
-
-  /// 指定されたウィンドウの設定を保存します (必要なら)。
-  pub fn save_window_settings(&mut self, window_id: WindowId) {
-    if let Some(child) = self.children.get_mut(&window_id) {
-      child.save_settings_if_needed();
+        // 実際にアルファ値が変わった場合のみ設定を保存
+        if (child.graphics.get_background_color().alpha() - old_alpha).abs() > f32::EPSILON {
+            self.save_child_settings(window_id);
+        }      }
     }
   }
 
@@ -373,51 +346,52 @@ impl WindowManager {
       self.last_cursor_window_id = window_id;
   }
 
-  /// 現在管理しているすべての子ウィンドウの状態（位置、サイズ）を
-  /// グローバル設定（`GLOBAL_SETTINGS`）に反映させます。
-  /// アプリケーション終了時に呼び出され、最新の状態を保存するために使用されます。
-  pub fn update_settings_from_windows(&self) {
+  /// 指定された子ウィンドウの現在の状態（位置、サイズ、色、アイコン）を
+  /// グローバル設定に反映し、ファイルに即時保存します。
+  ///
+  /// # 引数
+  /// * `window_id` - 設定を保存する子ウィンドウの `WindowId`。
+  pub fn save_child_settings(&mut self, window_id: WindowId) {
+    // 対象の子ウィンドウを取得
+    let child_window = match self.children.get(&window_id) {
+        Some(cw) => cw,
+        None => {
+            log_error(&format!("設定保存対象のウィンドウが見つかりません (ID: {:?})", window_id));
+            return;
+        }
+    };
+
+    let id_str = child_window.id_str.clone(); // 設定キーとして使うID
+
+    { // 設定書き込みロックのスコープ
     // 設定への書き込みロックを取得
     let mut settings = get_settings_writer();
-    // 管理しているすべての子ウィンドウに対してループ
-    for (_window_id, child_window) in self.children.iter() {
-      // 子ウィンドウが持つ設定用のID文字列を取得
-      let id_str = &child_window.id_str;
-      // グローバル設定から、対応するIDの子ウィンドウ設定を取得 (可変参照)
-      if let Some(child_settings) = settings.children.get_mut(id_str) {
-        // --- 位置とサイズの保存 (既存のコード) ---
-        match child_window.window.outer_position() {
-          Ok(pos) => {
-            // 取得した位置を設定に書き込む
-            child_settings.x = pos.x;
-            child_settings.y = pos.y;
-          }
-          Err(e) => {
-            // 位置取得に失敗した場合、エラーログを出力
-            log_error(&format!("ウィンドウの位置取得に失敗 (id_str: {}): {}", id_str, e));
-          }
-        }
-        // ウィンドウの内側のサイズ (描画領域のサイズ) を取得
-        let size = child_window.window.inner_size();
-        // 取得したサイズを設定に書き込む
-        child_settings.width = size.width;
-        child_settings.height = size.height;
 
-        // --- ★アイコン情報の永続化処理を追加★ ---
-        // 現在の IconInfo リストからパス情報を抽出し、PersistentIconInfo のリストに変換
-        let persistent_icons: Vec<PersistentIconInfo> = child_window.groups.iter()
-          .map(|icon_info| PersistentIconInfo { path: icon_info.path.clone() }) // path をクローンして新しい構造体を作成
-          .collect();
-        // 変換したリストを設定に書き込む
-        child_settings.icons = persistent_icons;
-        // --- ★追加ここまで★ ---
+    // グローバル設定から、対応するIDの子ウィンドウ設定を取得 (可変参照)
+    if let Some(child_settings) = settings.children.get_mut(&id_str) {
+      // --- 位置とサイズの保存 ---
+      match child_window.window.outer_position() {
+        Ok(pos) => { child_settings.x = pos.x; child_settings.y = pos.y; }
+        Err(e) => { log_error(&format!("ウィンドウの位置取得に失敗 (id_str: {}): {}", id_str, e)); }
+      }
+      let size = child_window.window.inner_size();
+      child_settings.width = size.width;
+      child_settings.height = size.height;
 
+      // --- 色情報の保存 ---
+      child_settings.bg_color = color_to_hex_string(child_window.graphics.get_background_color());
+      child_settings.border_color = color_to_hex_string(child_window.graphics.get_border_color());
+
+      // --- アイコン情報の保存 ---
+      child_settings.icons = child_window.groups.iter()
+        .map(|icon_info| PersistentIconInfo { path: icon_info.path.clone() })
+        .collect();
       } else {
-        // グローバル設定内に対応するIDが見つからなかった場合 (通常は起こらないはず)
         log_error(&format!("保存時に設定エントリが見つかりません (id_str: {})", id_str));
       }
     }
-    // スコープを抜ける際に書き込みロックが解放される
+    // --- 設定をファイルに即時保存 ---
+    save_settings(); // settings.rs の save_settings を呼び出す
   }
 
   /// 設定から読み込んだアイコンパス情報に基づいて、指定されたウィンドウにアイコンを復元します。
@@ -596,6 +570,8 @@ impl WindowManager {
     child.add(icon);
     // アイコン追加後に再描画を要求 (任意だが推奨)
     child.window.request_redraw();
+    // --- ★設定保存処理を追加 ---
+    self.save_child_settings(self.focused_id.unwrap());
   }
 
   /// 指定されたウィンドウにおけるマウスカーソルの最新位置を記録します。
@@ -799,8 +775,9 @@ impl WindowManager {
       }
     } // 書き込みロック解放
 
+    // --- ★設定保存処理を追加 (ウィンドウ削除後) ---
     log_info(&format!("Window {:?} and its data removed successfully.", window_id));
-    // 注意: 設定のファイルへの *永続化* はアプリケーション終了時に save_settings() で行われる。
+    save_settings(); // 設定ファイルに即時保存
   }
 
   /// 指定されたウィンドウの、指定されたインデックスにあるアイコンを削除します。
@@ -814,15 +791,17 @@ impl WindowManager {
     if let Some(child) = self.children.get_mut(&window_id) {
        // インデックスが有効範囲内か確認
        if index < child.groups.len() {
-           child.groups.remove(index); // ベクターからアイテムを削除
-           self.hovered_icon = None; // ホバー状態をリセット
-           self.last_click = None; // ダブルクリック状態をリセット
-           // カーソル位置情報は他の操作で必要になる可能性があるので、ここでは削除しない
-           // self.last_cursor_pos.remove(&window_id);
-           child.window.request_redraw(); // アイテム削除後に再描画を要求
+          child.groups.remove(index); // ベクターからアイテムを削除
+          self.hovered_icon = None; // ホバー状態をリセット
+          self.last_click = None; // ダブルクリック状態をリセット
+          // カーソル位置情報は他の操作で必要になる可能性があるので、ここでは削除しない
+          // self.last_cursor_pos.remove(&window_id);
+          child.window.request_redraw(); // アイテム削除後に再描画を要求
+          // --- ★設定保存処理を追加 ---
+          self.save_child_settings(window_id);
        } else {
-           // 無効なインデックスの場合 (通常は起こらないはず)
-           log_error(&format!("無効なインデックス {} でグループアイテムを削除しようとしました (グループ数: {})", index, child.groups.len()));
+          // 無効なインデックスの場合 (通常は起こらないはず)
+          log_error(&format!("無効なインデックス {} でグループアイテムを削除しようとしました (グループ数: {})", index, child.groups.len()));
        }
     }
   }

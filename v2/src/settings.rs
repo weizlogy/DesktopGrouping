@@ -175,9 +175,8 @@ pub fn get_settings_writer() -> RwLockWriteGuard<'static, Settings> {
 }
 
 // --- 設定をファイルに保存する公開関数 ---
-// WindowManager を引数に取らないように戻す
 pub fn save_settings() {
-  // manager.update_settings_from_windows(); // <- ここでの呼び出しを削除
+  // グローバル設定の現在の状態をファイルに書き込む
   let settings_reader = get_settings_reader();
   save_settings_internal(&*settings_reader); // 読み取りロックを使って保存
 }
