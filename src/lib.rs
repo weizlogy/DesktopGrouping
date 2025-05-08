@@ -11,6 +11,7 @@
 pub mod win32;
 pub mod tray;
 pub mod graphics;
+pub mod logger; // loggerモジュールをライブラリの公開メンバーにするよ！
 
 // pub mod aaa {
 //   pub fn moduletest() {}

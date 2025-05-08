@@ -2,7 +2,6 @@ use std::{collections::HashMap, rc::Rc, time::{Duration, Instant}};
 
 use arboard::Clipboard;
 use desktop_grouping::win32::ui_wam;
-
 use rand::Rng;
 use tiny_skia::Color;
 use winit::{
@@ -17,14 +16,16 @@ use crate::{
 const DOUBLE_CLICK_THRESHOLD_MS: u64 = 500;
 
 /// アプリケーション内で発生するカスタムイベント。
-/// 現在はトレイアイコンのメニューイベントのみ。
+/// 今はトレイアイコンのメニューから送られてくるイベントだけだよ！
 #[derive(Debug)]
 pub enum UserEvent {
   MenuEvent(tray_icon::menu::MenuEvent)
 }
 
 /// ウィンドウ全体を管理する構造体。
-/// 子ウィンドウの集合や、フォーカス、移動/リサイズ状態などを管理します。
+/// たくさんの子ウィンドウちゃんたち (`children`) を覚えておいたり、
+/// 今どの子ウィンドウちゃんに注目してるか (`focused_id`)、
+/// マウスでぐりぐり動かしたり大きさを変えたりする時の状態 (`is_moving`, `is_resizing`) を管理してるんだ！
 pub struct WindowManager {
   /// 子ウィンドウのマップ。キーは `WindowId`、値は `ChildWindow`。
   children: HashMap<WindowId, ChildWindow>,
@@ -38,14 +39,17 @@ pub struct WindowManager {
   pub hovered_icon: Option<(WindowId, usize)>,
   /// ダブルクリック判定用の最後にクリックされた時刻とウィンドウID。
   last_click: Option<(WindowId, Instant)>,
-  /// 各ウィンドウにおける最後のマウスカーソル位置。アイコン特定に使用。
+  /// 各ウィンドウちゃんの中で、最後にマウスカーソルがいた場所を覚えておくよ！アイコンの場所を特定するのに使うんだ。
   last_cursor_pos: HashMap<WindowId, PhysicalPosition<f64>>,
-  clipboard: Option<Clipboard>, // ★追加
-  last_cursor_window_id: Option<WindowId>, // ★追加: ホイールイベント用
+  /// クリップボードにアクセスするためのものだよ！コピペ機能で使うんだ♪
+  clipboard: Option<Clipboard>,
+  /// 最後にマウスカーソルがいたウィンドウのIDだよ！マウスホイールで透明度を変える時とかに使うんだ。
+  last_cursor_window_id: Option<WindowId>,
 }
 
 /// ウィンドウ操作（移動/リサイズ）の状態を管理する構造体。
-/// 対応するキー（Ctrl/Shift）とマウスボタンの押下状態を保持します。
+/// ウィンドウを動かす時 (Ctrlキー) や、大きさを変える時 (Shiftキー) に、
+/// 対応するキーとマウスの左ボタンが押されてるかどうかを覚えておくためのものだよ！
 #[derive(Debug)]
 pub struct WindowControl {
   /// 対応するキーボードのキーが押されているか。
@@ -55,8 +59,8 @@ pub struct WindowControl {
 }
 
 impl WindowControl {
-  /// 新しい `WindowControl` インスタンスを作成します。
-  /// 初期状態ではキーボードもマウスも押されていない (`false`) 状態です。
+  /// 新しい `WindowControl` インスタンスを作るよ！
+  /// 最初は、キーもマウスも押されてない (`false`) 状態からスタートだね！
   pub fn new() -> WindowControl {
     return WindowControl {
       keybord_pressed: false,
@@ -65,11 +69,8 @@ impl WindowControl {
   }
 
   /// 対応するキーとマウス左ボタンの両方が押されているかを判定します。
-  /// ウィンドウの移動やリサイズ操作が可能かどうかを判断するために使用します。
-  ///
-  /// # 戻り値
-  ///
-  /// 両方が押されている場合は `true`、それ以外は `false`。
+  /// これが `true` の時だけ、ウィンドウを動かしたり大きさを変えたりできるんだ！
+  /// まさに「操作可能！」ってことだね！(๑•̀ㅂ•́)و✧
   pub fn can_control(&self) -> bool {
     return self.keybord_pressed && self.mouse_pressed;
   }
@@ -77,7 +78,8 @@ impl WindowControl {
 
 impl WindowManager {
   /// 新しい `WindowManager` インスタンスを作成します。
-  /// 子ウィンドウリストや各種状態を初期化します。
+  /// たくさんの子ウィンドウちゃんたちを管理するための準備をするよ！
+  /// クリップボードもここで初期化するんだ。
   pub fn new(clipboard: Option<Clipboard>) -> WindowManager {
     return WindowManager {
       children: HashMap::new(), // 子ウィンドウマップを空で初期化
@@ -87,29 +89,28 @@ impl WindowManager {
       hovered_icon: None,       // 最初はホバーされているアイコンはない
       last_click: None,         // ダブルクリック判定情報を初期化
       last_cursor_pos: HashMap::new(), // カーソル位置マップを空で初期化
-      clipboard, // ★初期化
-      last_cursor_window_id: None, // ★初期化
+      clipboard,
+      last_cursor_window_id: None,
     };
   }
 
   /// 指定された `WindowId` が管理対象の子ウィンドウに存在するかどうかを確認します。
+  /// 「ねぇねぇ、このIDの子ウィンドウちゃん、知ってる？」って聞く感じだね！
   pub fn has_window(&self, id: &WindowId) -> bool {
     self.children.contains_key(id)
   }
 
   /// 指定された `WindowId` に対応する `winit::window::Window` への参照を取得します。
+  /// IDを渡すと、その子の `Window` オブジェクトをそっと教えてくれるよ。再描画をお願いする時とかに使うんだ。
   pub fn get_window_ref(&self, id: &WindowId) -> Option<&Window> {
     // self.children から ChildWindow を取得し、その中の window フィールドへの参照を返す
     self.children.get(id).map(|cw| &*cw.window) // Rc<Window> から &Window を取得
   }
 
   /// 管理対象の子ウィンドウを追加します。
-  ///
-  /// # 引数
-  ///
-  /// * `id` - 追加する子ウィンドウの `WindowId`。
-  /// * `window` - 追加する `winit::window::Window` インスタンス (Rcでラップ)。
-  /// * `id_str` - このウィンドウを識別するためのユニークな文字列ID。設定の読み書きに使用。
+  /// 新しい子ウィンドウちゃんが仲間入りする時に呼ばれるよ！
+  /// `Window` オブジェクトと、その子の名前 (id_str)、それから初期設定をもらって、
+  /// `ChildWindow` インスタンスを作って `children` マップに追加するんだ。
   pub fn insert(
     &mut self,
     id: &WindowId,
@@ -124,13 +125,15 @@ impl WindowManager {
       ChildWindow::new(
         window,
         id_str,
-        &settings.bg_color, // ★渡す
-        &settings.border_color, // ★渡す
+        &settings.bg_color,
+        &settings.border_color,
       ),
     );
   }
 
   /// Ctrl+V ペーストイベントを処理します。
+  /// クリップボードにコピーされた文字を見て、それが色コードだったら背景色を変えたり、
+  /// `#Random` って書いてあったらランダムな色にしちゃったりするよ！楽しいね！(<em>´艸｀</em>)
   pub fn handle_paste(&mut self, window_id: WindowId) {
     if let Some(clipboard) = &mut self.clipboard {
       match clipboard.get_text() {
@@ -178,6 +181,8 @@ impl WindowManager {
   }
 
   /// Ctrl+マウスホイールイベントを処理します。
+  /// 最後にマウスカーソルがいたウィンドウの透明度を、くるくる～って変えるんだ♪
+  /// 透明度が実際に変わった時だけ、設定を保存するようになってるよ。エコだね！
   pub fn handle_mouse_wheel(&mut self, delta_y: f32) {
     // 最後にカーソルがあったウィンドウIDを使用
     if let Some(window_id) = self.last_cursor_window_id {
@@ -194,15 +199,14 @@ impl WindowManager {
   }
 
   /// 最後にカーソルがあったウィンドウIDを記録します。
+  /// マウスホイールイベントの時に、どこのウィンドウの透明度を変えるか判断するのに使うよ！
   pub fn set_last_cursor_window(&mut self, window_id: Option<WindowId>) {
       self.last_cursor_window_id = window_id;
   }
 
   /// 指定された子ウィンドウの現在の状態（位置、サイズ、色、アイコン）を
   /// グローバル設定に反映し、ファイルに即時保存します。
-  ///
-  /// # 引数
-  /// * `window_id` - 設定を保存する子ウィンドウの `WindowId`。
+  /// ウィンドウを動かしたり、色を変えたり、アイコンを追加したりした時に呼ばれて、今の状態をちゃんと覚えておくんだ。
   pub fn save_child_settings(&mut self, window_id: WindowId) {
     // 対象の子ウィンドウを取得
     let child_window = match self.children.get(&window_id) {
@@ -273,10 +277,8 @@ impl WindowManager {
   }
 
   /// 設定から読み込んだアイコンパス情報に基づいて、指定されたウィンドウにアイコンを復元します。
-  ///
-  /// # 引数
-  /// * `window_id` - アイコンを復元する対象のウィンドウID。
-  /// * `persistent_icons` - 永続化されていたアイコンパス情報のリスト (`Vec<PersistentIconInfo>`)。
+  /// アプリを起動した時に、前に保存したアイコンたちをウィンドウに戻してあげるお仕事だよ！
+  /// もしアイコンの復元で何かあっても、`catch_unwind` でアプリ全体が困っちゃわないようにしてるんだ。えらい！
   pub fn restore_icons(&mut self, window_id: &WindowId, persistent_icons: &[PersistentIconInfo]) {
     // 対象の子ウィンドウ (可変参照) を取得
     if let Some(child) = self.children.get_mut(window_id) {
@@ -309,10 +311,8 @@ impl WindowManager {
   }
 
   /// ウィンドウ移動操作のためのキーボード状態を設定します (通常はCtrlキー)。
-  ///
-  /// # 引数
-  ///
-  /// * `state` - キーが押されている (`true`) か、離された (`false`) か。
+  /// Ctrlキーが押されたり離されたりした時に呼ばれて、`is_moving.keybord_pressed` の状態を更新するよ。
+  /// キーが離されたら、フォーカスも解除するのを忘れないようにね！
   pub fn set_moving_keybord_state(&mut self, state: bool) {
     self.is_moving.keybord_pressed = state;
     // キーが離されたら、フォーカスも解除する
@@ -322,10 +322,8 @@ impl WindowManager {
   }
 
   /// ウィンドウリサイズ操作のためのキーボード状態を設定します (通常はShiftキー)。
-  ///
-  /// # 引数
-  ///
-  /// * `state` - キーが押されている (`true`) か、離された (`false`) か。
+  /// Shiftキーが押されたり離されたりした時に呼ばれて、`is_resizing.keybord_pressed` の状態を更新するよ。
+  /// こっちも、キーが離されたらフォーカスを解除するのを忘れずに！
   pub fn set_resizing_keybord_state(&mut self, state: bool) {
     self.is_resizing.keybord_pressed = state;
     // キーが離されたら、フォーカスも解除する
@@ -336,7 +334,7 @@ impl WindowManager {
 
   /// ウィンドウのドラッグ移動操作を開始します。
   /// 移動キー (Ctrl) とマウス左ボタンが両方押されており、
-  /// かつフォーカスされているウィンドウがある場合に、OSにウィンドウ移動を依頼します。
+  /// かつフォーカスされているウィンドウがある場合に、その子ウィンドウちゃんに「動いてー！」ってお願いするよ。
   pub fn start_dragging(&mut self) {
     // 移動操作が可能かチェック
     if !self.is_moving.can_control() || self.focused_id.is_none() {
@@ -353,6 +351,9 @@ impl WindowManager {
   }
 
   /// ウィンドウのリサイズ操作を開始します。
+  /// リサイズキー (Shift) とマウス左ボタンが両方押されてて、
+  /// フォーカスされてるウィンドウがあったら、その子に「大きくなってー！」 (または「小さくなってー！」) ってお願いするよ。
+  /// 今は右下方向にしかリサイズできないけどね！(・ω<)
   pub fn start_resizing(&mut self) {
     // リサイズ操作が可能かチェック
     if !self.is_resizing.can_control() || self.focused_id.is_none() {
@@ -369,6 +370,7 @@ impl WindowManager {
   }
 
   /// 指定されたIDのウィンドウをデスクトップの最背面 (他のウィンドウの後ろ) に移動します。
+  /// 「ちょっと奥に行っててね～」って感じで、ウィンドウを一番後ろに隠すんだ。
   pub fn backmost(&mut self, id: &WindowId) {
     // 対象の子ウィンドウを取得
     let child =
@@ -379,6 +381,8 @@ impl WindowManager {
   }
 
   /// 指定されたIDのウィンドウの内容を描画します。
+  /// その子ウィンドウちゃんに「お絵かきお願いね！」って伝えて、
+  /// マウスカーソルがアイコンの上にあったら、それも教えてあげるんだ。
   pub fn draw_window(&mut self, id: &WindowId) {
     // 管理している子ウィンドウがない場合は何もしない
     if self.children.is_empty() {
@@ -400,6 +404,8 @@ impl WindowManager {
   }
 
   /// 指定されたIDのウィンドウのサイズが変更されたときに呼び出されます。
+  /// ウィンドウの大きさが変わったら、その子ウィンドウちゃんに「サイズ変わったよー！」って教えて、
+  /// グラフィックスの準備をし直してもらってから、再描画をお願いするんだ。
   pub fn resize(&mut self, id: &WindowId, new_size: winit::dpi::PhysicalSize<u32>) {
     // 管理している子ウィンドウがない場合は何もしない
     if self.children.is_empty() {
@@ -415,6 +421,8 @@ impl WindowManager {
   }
 
   /// 現在フォーカスされている子ウィンドウにアイコン情報を追加します。
+  /// ファイルがウィンドウにドラッグ＆ドロップされた時とかに呼ばれるよ！
+  /// 新しいアイコンを仲間入りさせて、設定もちゃんと保存するんだ。
   pub fn add_group(&mut self, icon: IconInfo) {
     // 子ウィンドウがない、またはフォーカスされているウィンドウがない場合は何もしない
     if self.children.is_empty() || self.focused_id.is_none() {
@@ -433,11 +441,14 @@ impl WindowManager {
   }
 
   /// 指定されたウィンドウにおけるマウスカーソルの最新位置を記録します。
+  /// マウスが動くたびに、どこのウィンドウのどのへんにいるか覚えておくんだ。
+  /// アイコンをクリックしたかとか、ホバーしてるかとかを判断するのに使うよ！
   pub fn update_cursor_pos(&mut self, window_id: WindowId, position: PhysicalPosition<f64>) {
     self.last_cursor_pos.insert(window_id, position);
   }
 
   /// マウスの左クリックイベントを処理します。
+  /// ダブルクリックされたかどうかをチェックして、もしダブルクリックだったら、その場所にあるアイコンを実行するよ！
   pub fn execute_group_item(&mut self, window_id: WindowId) {
     let now = Instant::now(); // 現在時刻を取得
     let mut is_double_click = false; // ダブルクリックフラグ
@@ -484,6 +495,9 @@ impl WindowManager {
   }
 
   /// マウスの右クリックイベント (Ctrlキー同時押し) を処理します。
+  /// Ctrlキーを押しながら右クリックすると、その場所にあるアイコンを削除したり、
+  /// 何もないところだったらウィンドウ自体を削除するかどうか聞いたりするよ！
+  /// ちょっと危険な操作だから、気をつけてね！＞＜
   pub fn remove_group_item(&mut self, window_id: WindowId) {
     // Ctrlキーが押されているか確認 (is_moving.keybord_pressed で代用)
     if !self.is_moving.keybord_pressed {
@@ -512,6 +526,8 @@ impl WindowManager {
 
   /// アイコンが右クリックされたときに、そのアイコンのファイルの場所をエクスプローラーで開くよ！
   /// Ctrlキーが押されて *いない* 右クリックのときに呼ばれるんだ♪
+  /// 「このアイコン、どこのファイルだっけ～？」って時に便利だね！
+  /// エクスプローラーで、そのファイルがあるフォルダを開いてくれるよ！
   pub fn open_icon_location(&mut self, window_id: WindowId) {
       // まず、どこをクリックしたか思い出すよ (最後に記録したカーソル位置！)
       if let Some(cursor_pos) = self.last_cursor_pos.get(&window_id).cloned() {
@@ -549,6 +565,8 @@ impl WindowManager {
   }
 
   /// ウィンドウ削除の要求を受け付け、確認ダイアログを表示するメソッド。
+  /// `remove_group_item` から呼ばれて、本当にウィンドウを消しちゃっていいかユーザーさんに聞くんだ。
+  /// 「はい」って言われたら、`remove_window` を呼び出して、さよならバイバイするよ…(´；ω；｀)
   fn request_remove_window(&mut self, window_id: WindowId) {
     // 確認ダイアログを表示し、ユーザーが「はい」を押した場合のみ削除処理を実行
     if show_confirmation_dialog() {
@@ -560,7 +578,7 @@ impl WindowManager {
   }
 
   /// 指定されたウィンドウIDに対応する子ウィンドウと関連データを削除するメソッド。
-  /// 設定ファイルからも該当エントリを削除します。
+  /// ウィンドウを本当に消しちゃう処理だよ！ `children` マップから削除して、設定ファイルからも消して、後片付けもちゃんとするんだ。
   fn remove_window(&mut self, window_id: WindowId) {
     // 1. 設定ファイルから削除するために id_str を取得
     let id_str_to_remove = if let Some(child) = self.children.get(&window_id) {
@@ -613,6 +631,7 @@ impl WindowManager {
   }
 
   /// 指定されたウィンドウの、指定されたインデックスにあるアイコンを削除します。
+  /// 「このアイコン、もういらないや～」って時に呼ばれて、リストから削除して再描画をお願いするよ。設定も忘れずに保存！
   fn remove_item(&mut self, window_id: WindowId, index: usize) {
     // 対象の子ウィンドウ (可変参照) を取得
     if let Some(child) = self.children.get_mut(&window_id) {
@@ -635,6 +654,8 @@ impl WindowManager {
 
   /// 指定されたウィンドウ内の特定の物理座標 (`PhysicalPosition`) に
   /// どのアイコンが存在するかを判定します。
+  /// マウスカーソルが動いた時に、「今、どの子ウィンドウのどのアイコンの上にいるのかな～？」って調べるのに使うよ！
+  /// アイコンの描画範囲 (`get_item_rect_f32`) と見比べて判断するんだ。
   pub fn find_icon_at_relative_pos(
     &self,
     window_id: WindowId,

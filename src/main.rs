@@ -2,14 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod file_drag;
-mod logger;
+// mod logger; // logger は lib.rs にお引越ししたから、ここからは消すね！
 mod mywindow;
 mod child_window; // 新しいお家を教えてあげるよ！
 mod window_utils; // 便利屋さんのお家も教えてあげる！
 mod settings;
 
 use std::rc::Rc;
-
 use arboard::Clipboard;
 use desktop_grouping::tray::tray_icon::create_tray;
 use file_drag::IconInfo;
@@ -17,6 +16,8 @@ use logger::{log_debug, log_info, log_warn};
 use mywindow::UserEvent;
 
 // generate_child_id, ChildSettings など必要なものをインポート
+use desktop_grouping::logger; // logger モジュールをライブラリから使うよ！
+
 use settings::{
   generate_child_id, get_settings_reader, get_settings_writer, ChildSettings,
 };

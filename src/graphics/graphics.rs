@@ -6,31 +6,36 @@ use softbuffer::{Context, Surface as SoftSurface};
 use tiny_skia::{Color, Paint, PathBuilder, Pixmap, PixmapPaint, PremultipliedColorU8, Rect, Shader, Stroke, Transform};
 use windows::Win32::Graphics::Gdi::{BITMAPINFO, BI_RGB};
 use winit::{dpi::PhysicalSize, window::Window};
+// logger モジュールは get_background_color などで使ってるから、ちゃんと use しとかないとね！
+use crate::logger::*;
 
 // --- レイアウト定数 (MyGraphics 構造体外で定義しても良い) ---
-const PADDING: f32 = 10.0;
-const LAYOUT_ICON_SIZE: f32 = 48.0; // レイアウト計算用の基準アイコンサイズ
-const PADDING_UNDER_ICON: f32 = 12.0;
-const TEXT_HEIGHT: f32 = 16.0; // テキスト描画領域の高さ (フォントサイズとは別)
-const TEXT_FONT_SIZE: f32 = 16.0; // 実際に描画するフォントのサイズ
-const ADJUST_SELECT_RECT: f32 = 3.0; // ホバー時の選択矩形の調整値
+const PADDING: f32 = 10.0; // アイテム間の基本的な余白だよ！
+const LAYOUT_ICON_SIZE: f32 = 48.0; // レイアウトを計算する時の、アイコンの基準となる大きさだよ。
+const PADDING_UNDER_ICON: f32 = 12.0; // アイコンと、その下のテキストの間の余白だよ。
+const TEXT_HEIGHT: f32 = 16.0; // テキストを描画するために確保しておく高さだよ。実際のフォントサイズとはちょっと違うんだ。
+const TEXT_FONT_SIZE: f32 = 16.0; // テキストを描画する時の、実際のフォントの大きさだよ。
+const ADJUST_SELECT_RECT: f32 = 3.0; // アイコンがホバーされた時に表示する選択範囲の矩形を、ちょっとだけ調整するための値だよ。
 // --- 枠線定数 ---
-const BORDER_WIDTH: f32 = 2.0; // 枠線の太さ (例: 1px)
+const BORDER_WIDTH: f32 = 2.0; // ウィンドウの枠線の太さだよ！今は2ピクセルだね。
 // ---------------------------------------------------------
 // --- 透過度定数 ---
-const MIN_ALPHA: f32 = 0.05; // 透過度の下限値
+const MIN_ALPHA: f32 = 0.05; // 色のアルファ値（透明度）が、これより小さくならないようにするための下限値だよ。あんまり透明すぎると見えなくなっちゃうからね！
 // ---------------------------------------------------------
 
+/// ウィンドウごとのグラフィック描画を担当する構造体だよ！
+/// `softbuffer` を使ってウィンドウにピクセルバッファを描画して、
+/// `tiny_skia` で背景、枠線、アイコン、テキストとかを描画するんだ。
 pub struct MyGraphics {
   soft_surface: SoftSurface<Rc<Window>, Rc<Window>>,
   pixmap: Pixmap,
   // --- レイアウト情報 ---
-  width: u32,
-  height: u32,
-  items_per_row: usize,
-  max_text_width: f32, // アイコン幅の2倍など、テキストの最大許容幅
-  item_width: f32,     // グリッドアイテムの幅 (max_text_width + padding)
-  item_height: f32,    // グリッドアイテムの高さ (icon_size + text_height + padding)
+  width: u32, // ピクセルマップの幅 (ウィンドウの内部幅と同じだよ！)
+  height: u32, // ピクセルマップの高さ (ウィンドウの内部高さと同じだよ！)
+  items_per_row: usize, // 1行に表示できるアイコンの数だよ。ウィンドウの幅によって変わるんだ。
+  max_text_width: f32, // アイコンの下に表示するテキストの、許容される最大の幅だよ。これを超えると省略されちゃう！
+  item_width: f32,     // グリッドレイアウトの1アイテムあたりの幅だよ (テキストの最大幅 + 余白)。
+  item_height: f32,    // グリッドレイアウトの1アイテムあたりの高さだよ (アイコンの高さ + テキストの高さ + 余白)。
   // --- フォント ---
   font: FontRef<'static>, // フォントデータを保持
   background_paint: Paint<'static>, // 背景色用 Paint
@@ -38,20 +43,26 @@ pub struct MyGraphics {
   border_stroke: Stroke,          // 枠線の太さなど
 }
 
+/// 色の文字列 (例: `"#RRGGBB"` や `"#RRGGBBAA"`) を `tiny_skia::Color` に変換するよ！
+///
+/// '#' があってもなくても大丈夫！6桁だったらアルファ値は不透明 (FF) になるよ。
+/// もし変換できなかったら `None` を返すから、ちゃんとチェックしてね！
 pub fn parse_color(color_str: &str) -> Option<Color> {
-  let color_str = color_str.strip_prefix('#')?; // '#' を除去
-  let (r_str, g_str, b_str, a_str) = match color_str.len() {
+  // '#' があったら取り除いて、なかったらそのまま使うよ！
+  let s = color_str.strip_prefix('#').unwrap_or(color_str);
+
+  let (r_str, g_str, b_str, a_str) = match s.len() {
     6 => (
-      color_str.get(0..2)?,
-      color_str.get(2..4)?,
-      color_str.get(4..6)?,
+      s.get(0..2)?,
+      s.get(2..4)?,
+      s.get(4..6)?,
       "FF", // Alpha を FF (不透明) とする
     ),
     8 => (
-      color_str.get(0..2)?,
-      color_str.get(2..4)?,
-      color_str.get(4..6)?,
-      color_str.get(6..8)?,
+      s.get(0..2)?,
+      s.get(2..4)?,
+      s.get(4..6)?,
+      s.get(6..8)?,
     ),
     _ => return None, // 6桁でも8桁でもなければ無効
   };
@@ -62,7 +73,9 @@ pub fn parse_color(color_str: &str) -> Option<Color> {
   Color::from_rgba8(r, g, b, a).into() // tiny_skia::Color を返す
 }
 
-// テキスト幅計算ヘルパー関数
+/// 指定されたテキストが、特定のフォントとスケールで描画された場合に、
+/// どれくらいの幅になるかを計算するよ！
+/// カーニング（文字と文字の間のアキ）もちゃんと考慮してるんだ。えらい！
 fn calculate_text_width(text: &str, font: &impl Font, scale: PxScale) -> f32 {
   let scaled_font = font.as_scaled(scale);
   let mut total_width = 0.0;
@@ -82,7 +95,10 @@ fn calculate_text_width(text: &str, font: &impl Font, scale: PxScale) -> f32 {
   total_width
 }
 
-/// ウィンドウ幅に基づいてレイアウト情報を計算する
+/// ウィンドウの幅 (`window_width`) をもとに、アイコンをグリッド表示するための
+/// レイアウト情報 (1行あたりのアイテム数、テキストの最大幅、アイテムごとの幅と高さ) を計算するよ！
+///
+/// ウィンドウがリサイズされた時とかに呼び出されて、表示をいい感じに調整するんだ。
 fn calculate_layout(window_width: u32) -> (usize, f32, f32, f32) {
   let max_text_width = LAYOUT_ICON_SIZE * 2.0;
   let item_width = max_text_width + PADDING;
@@ -98,6 +114,12 @@ fn calculate_layout(window_width: u32) -> (usize, f32, f32, f32) {
 }
 
 impl MyGraphics {
+  /// 新しい `MyGraphics` インスタンスを作るよ！
+  ///
+  /// ウィンドウハンドル (`window`) と、初期の背景色・枠線色をもらって、
+  /// 描画に必要なもの (softbufferのサーフェス、ピクセルマップ、フォント、レイアウト情報など) を準備するんだ。
+  ///
+  /// 色の文字列がもしパースできなかったら、優しいデフォルト色にしてくれるから安心してね！(<em>´ω｀</em>)
   pub fn new(window: &Rc<Window>, bg_color_str: &str, border_color_str: &str) -> Self {
     let initial_size = window.inner_size();
     let width = initial_size.width;
@@ -142,7 +164,7 @@ impl MyGraphics {
     border_paint.set_color(border_color);
     border_paint.anti_alias = true;
 
-    let border_stroke = Stroke { width: 1.0, ..Default::default() }; // 枠線の太さなど
+    let border_stroke = Stroke { width: BORDER_WIDTH, ..Default::default() }; // 枠線の太さなど
 
     return MyGraphics {
       soft_surface,
@@ -160,7 +182,9 @@ impl MyGraphics {
     };
   }
 
-  /// 色のアルファ値を MIN_ALPHA にクランプするヘルパー関数
+  /// 色のアルファ値（透明度）を、`MIN_ALPHA` で定義された下限値に制限（クランプ）するよ！
+  ///
+  /// あんまり透明にしすぎると見えなくなっちゃうから、それを防ぐためのおまじないなんだ♪
   fn clamp_alpha(mut color: Color) -> Color {
       let alpha = color.alpha();
       if alpha < MIN_ALPHA {
@@ -171,19 +195,23 @@ impl MyGraphics {
       color
   }
 
-  /// 背景色を更新します。
+  /// 背景色を更新するよ！
+  /// 新しい色 (`color`) をもらって、アルファ値を下限チェックしてから `background_paint` に設定するんだ。
   pub fn update_background_color(&mut self, color: Color) {
     let clamped_color = Self::clamp_alpha(color);
     self.background_paint.set_color(clamped_color);
   }
 
-  /// 枠線色を更新します。
+  /// 枠線色を更新するよ！
+  /// 新しい色 (`color`) をもらって、こっちもアルファ値を下限チェックしてから `border_paint` に設定するんだ。
   pub fn update_border_color(&mut self, color: Color) {
       let clamped_color = Self::clamp_alpha(color);
       self.border_paint.set_color(clamped_color);
   }
 
-  /// 現在の背景色を取得します (透過度調整用)。
+  /// 今設定されてる背景色を取得するよ！
+  /// `Paint` オブジェクトが直接色を返してくれないから、中の `Shader` を見て色を取り出すんだ。
+  /// もし万が一、想定外のシェーダーだったら、透明色を返してログに警告を出すようになってるよ。
   pub fn get_background_color(&self) -> Color {
     // self.background_paint.color // <- これはエラーになる！
     // shader フィールドから色を取得する
@@ -192,14 +220,15 @@ impl MyGraphics {
         Shader::SolidColor(color) => color,
         // SolidColor 以外は想定していないが、フォールバックとして透明色を返す
         _ => {
-            // 本来ここに来ることはないはずなので警告ログを出す
-            log::warn!("Background paint shader is not SolidColor!");
+            // 本来ここに来ることはないはずなので警告ログを出す (logger クレートの log_warn を使うよ！)
+            log_warn("Background paint shader is not SolidColor!");
             Color::TRANSPARENT // または適切なデフォルト値
         }
     }
   }
 
-  /// 現在の枠線色を取得します (設定保存用)。
+  /// 今設定されてる枠線色を取得するよ！ (設定保存用とかに使うんだ)
+  /// こっちも `Paint` の中の `Shader` を見て色を取り出すよ。
   pub fn get_border_color(&self) -> Color {
     // self.border_paint.color // <- これもエラーになる！
     // shader フィールドから色を取得する
@@ -208,13 +237,17 @@ impl MyGraphics {
         Shader::SolidColor(color) => color,
         // SolidColor 以外は想定していないが、フォールバックとして黒色を返す
         _ => {
-            // 本来ここに来ることはないはずなので警告ログを出す
-            log::warn!("Border paint shader is not SolidColor!");
+            // 本来ここに来ることはないはずなので警告ログを出す (logger クレートの log_warn を使うよ！)
+            log_warn("Border paint shader is not SolidColor!");
             Color::BLACK // または適切なデフォルト値
         }
     }
   }
 
+  /// ウィンドウのサイズが変更された時に呼び出されるよ！
+  ///
+  /// 新しいサイズ (`new_size`) に合わせて、内部の `soft_surface` と `pixmap` をリサイズして、
+  /// アイコンのグリッドレイアウトも再計算するんだ。これで表示が崩れないようにするんだね！
   pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
     self.width = new_size.width;
     self.height = new_size.height;
@@ -234,6 +267,10 @@ impl MyGraphics {
     self.item_height = item_height;
   }
 
+  /// 描画を開始する時に呼び出すよ！
+  ///
+  /// まず、ピクセルマップ全体を完全に透明な色でクリアして、前回の描画内容をリセットするんだ。
+  /// それから、設定されてる背景色で塗りつぶして、最後に枠線を描画するよ！これで描画の準備はバッチリ！
   pub fn draw_start(&mut self) {
     // Pixmap 全体を完全に透明な色でクリアする
     // これにより、前回の描画の影響 (特に draw_icon/draw_text による状態破壊の可能性) をリセットする
@@ -273,13 +310,12 @@ impl MyGraphics {
     // ---------------------------------------------------------
   }
 
-  /// グループアイコンを描画します。
+  /// グループアイコンを描画するよ！
+  /// 1つのアイコンとその名前を、グリッドレイアウトに従っていい感じの位置に描画するんだ。
   ///
-  /// # 引数
-  /// * `index` - グループリスト内でのインデックス (描画位置計算用)。
-  /// * `name` - アイコン名 (現在は未使用、将来的に表示するかも)。
-  /// * `icon_data` - アイコンのビットマップ情報とピクセルデータ。
-  /// * `is_hovered` - このアイコンが現在マウスホバーされているか。
+  /// `index` を使って、何行目の何列目に描くか計算して、
+  /// `icon_data` からアイコンの絵を取り出して、`icon_name` をその下に表示するよ。
+  /// もし `is_hovered` が `true` だったら、アイコンの周りをちょっとキラキラさせて目立たせるよ！✨
   pub fn draw_group(
     &mut self,
     index: usize,
@@ -349,6 +385,12 @@ impl MyGraphics {
     self.draw_text(&icon_name, text_draw_x, text_draw_y, self.max_text_width);
   }
 
+  /// アイコンのビットマップデータをピクセルマップに描画するよ！
+  ///
+  /// Windows の BITMAPINFO ヘッダー (`icon_info`) とピクセルデータ (`pixel_data`) をもらって、
+  /// それを解釈して `tiny_skia` が扱える形式に変換しながら、指定された座標 (`x`, `y`) に描画するんだ。
+  /// DIBフォーマットっていう、ちょっと昔ながらの形式を扱うから、色の並びとか、画像の上下が逆だったりするのに注意しながら処理してるよ！
+  /// もしアイコンデータが変だったり、サポートしてない形式だったら、代わりに赤い四角 (プレースホルダー) を描画するようになってるんだ。
   fn draw_icon(&mut self, icon_info: &BITMAPINFO, pixel_data: &[u8], x: u32, y: u32) {
     let header = &icon_info.bmiHeader;
     // biWidth は負の値の場合があるため絶対値を取る
@@ -440,7 +482,9 @@ impl MyGraphics {
     );
   }
 
-  /// アイコン描画失敗時のプレースホルダーを描画するヘルパー関数
+  /// アイコンの描画に失敗しちゃった時に、代わりに表示するプレースホルダー（仮の印）を描画するよ！
+  ///
+  /// 今は半透明の赤い四角を描画するようになってるんだ。これが出たら「あれれ？アイコンがうまく取れなかったのかな？」って分かるね！
   fn draw_placeholder_icon(&mut self, x: u32, y: u32, width: u32, height: u32) {
     // Rect::from_xywh は失敗する可能性があるため unwrap_or_else で代替値を設定
     let rect = Rect::from_xywh(x as f32, y as f32, width as f32, height as f32)
@@ -454,6 +498,12 @@ impl MyGraphics {
     self.pixmap.fill_rect(rect, &paint, Transform::identity(), None);
   }
 
+  /// 指定されたテキストを、いい感じに中央揃えして、ピクセルマップに描画するよ！
+  ///
+  /// `text` を `startx`, `starty` の位置を基準にして、`max_width` を超えないように描画するんだ。
+  /// もしテキストが長すぎて `max_width` に収まらなかったら、賢く「...」って省略してくれるよ！
+  /// `ab_glyph` を使って、フォントから文字の形（グリフ）を一つ一つ取り出して、それをピクセルマップに描き込んでいくんだ。
+  /// ちょっと複雑だけど、これで綺麗な文字が表示できるんだね！(<em>´ω｀</em>)
   fn draw_text(&mut self, text: &str, startx: f32, starty: f32, max_width: f32) {
     // フィールドからフォントを使用
     let font = &self.font;
@@ -588,6 +638,10 @@ impl MyGraphics {
     }
   }
 
+  /// これまでピクセルマップに描画してきた内容を、実際にウィンドウに表示するよ！
+  ///
+  /// `soft_surface` からウィンドウのバッファを取得して、`self.pixmap` の内容をそこにコピーするんだ。
+  /// ピクセルフォーマット (RGBA とか ARGB とか) の違いも、ここで吸収してるみたいだね！
   pub fn draw_finish(&mut self) {
     let mut buffer =
       self.soft_surface.buffer_mut().expect("Failed to get buffer");
@@ -617,7 +671,9 @@ impl MyGraphics {
 
   /// 指定されたインデックスのアイテム全体（アイコン、テキスト、パディング）が
   /// 描画される矩形領域（相対座標、f32）を計算します。
-  /// ホバー判定などに使用します。Y座標と高さを調整済み。
+  ///
+  /// マウスカーソルがどのアイコンの上にあるか判定する時 (ホバー判定) とかに使うよ！
+  /// `ADJUST_SELECT_RECT` を使って、選択範囲の見た目をちょっと調整してるんだ。
   pub fn get_item_rect_f32(&self, index: usize) -> Option<Rect> {
     // 幅か高さが0、または items_per_row が0なら計算不能
     if self.width == 0 || self.height == 0 || self.items_per_row == 0 {
@@ -642,4 +698,72 @@ impl MyGraphics {
     rect // intersect は Option<Rect> を返すので、そのまま返す
   }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*; // graphics.rs の中身をぜーんぶ使えるようにするおまじない！
+
+    #[test]
+    fn test_parse_color_valid_formats() {
+        // ちゃんと '#' があってもなくても、6桁でも8桁でもパースできるかな？
+        assert_eq!(parse_color("#FF0000").unwrap(), Color::from_rgba8(255, 0, 0, 255));
+        assert_eq!(parse_color("00FF00").unwrap(), Color::from_rgba8(0, 255, 0, 255));
+        assert_eq!(parse_color("#0000FF80").unwrap(), Color::from_rgba8(0, 0, 255, 128));
+        assert_eq!(parse_color("12345678").unwrap(), Color::from_rgba8(0x12, 0x34, 0x56, 0x78));
+    }
+
+    #[test]
+    fn test_parse_color_invalid_formats() {
+        // 変な文字列や長さが違うものはちゃんと None になるかな？
+        assert!(parse_color("").is_none());
+        assert!(parse_color("#123").is_none());
+        assert!(parse_color("GGHHII").is_none()); // 'G' は16進数じゃないもんね！
+        assert!(parse_color("#12345").is_none());
+        assert!(parse_color("#1234567").is_none());
+    }
+
+    #[test]
+    fn test_calculate_layout_logic() {
+        // ウィンドウ幅 300px の時、アイテム幅が (48*2 + 10) = 106 だから…
+        // (300 - 10) / 106 = 290 / 106 = 2.73... で、切り捨てて 2 アイテムになるはず！
+        let (items_per_row, max_text_width, item_width, item_height) = calculate_layout(300);
+        assert_eq!(items_per_row, 2);
+        assert_eq!(max_text_width, LAYOUT_ICON_SIZE * 2.0); // 96.0
+        assert_eq!(item_width, LAYOUT_ICON_SIZE * 2.0 + PADDING); // 106.0
+        assert_eq!(item_height, LAYOUT_ICON_SIZE + PADDING_UNDER_ICON + TEXT_HEIGHT + PADDING); // 48+12+16+10 = 86.0
+
+        // もっと狭い時 (アイテム1つ分しか入らない時)
+        let (items_per_row_narrow, _, _, _) = calculate_layout(100);
+        assert_eq!(items_per_row_narrow, 1); // 最低1アイテムは表示するもんね！
+
+        // 0幅の時は…？ (実際には起こらないはずだけど、念のため)
+        let (items_per_row_zero, _, _, _) = calculate_layout(0);
+        assert_eq!(items_per_row_zero, 1); // これも最低1アイテム！
+    }
+
+    #[test]
+    fn test_clamp_alpha_logic() {
+        let color_opaque = Color::from_rgba8(10, 20, 30, 255);
+        assert_eq!(MyGraphics::clamp_alpha(color_opaque).alpha(), 1.0); // 255/255.0 = 1.0
+
+        let color_normal_alpha = Color::from_rgba8(10, 20, 30, 128); // 0.5 ちょっと
+        assert!((MyGraphics::clamp_alpha(color_normal_alpha).alpha() - 128.0/255.0).abs() < f32::EPSILON);
+
+        let color_too_transparent = Color::from_rgba8(10, 20, 30, 5); // MIN_ALPHA (0.05 * 255 = 12.75) より小さい
+        assert!((MyGraphics::clamp_alpha(color_too_transparent).alpha() - MIN_ALPHA).abs() < f32::EPSILON);
+
+        let color_at_min_alpha = Color::from_rgba(0.1, 0.2, 0.3, MIN_ALPHA).unwrap();
+        assert!((MyGraphics::clamp_alpha(color_at_min_alpha).alpha() - MIN_ALPHA).abs() < f32::EPSILON);
+    }
+
+    // calculate_text_width のテストは、実際のフォントファイルが必要で、
+    // 環境によって微妙に結果が変わる可能性もあるから、ちょっと難しいんだよね…＞＜
+    // もしテストするなら、テスト用のフォントを用意して、いくつかの文字列で期待される幅を
+    // 事前に計算しておく必要があるかも！
+    //
+    // MyGraphics の他の描画系メソッド (new, resize, draw_start, draw_group, draw_icon, draw_text, draw_finish) や
+    // get_background_color, get_border_color, get_item_rect_f32 も、
+    // 実際にウィンドウを作ったり、ピクセルデータを比較したりしないとテストが難しいから、
+    // 今回はごめんね、ユニットテストはお休みさせてもらうね！(<em>ﾉω・</em>)ﾃﾍ
 }
