@@ -1,26 +1,20 @@
-use std::{collections::HashMap, hash::{DefaultHasher, Hash, Hasher}, rc::Rc, time::{Duration, Instant}};
+use std::{collections::HashMap, rc::Rc, time::{Duration, Instant}};
 
 use arboard::Clipboard;
-use colorsys::{Hsl, Rgb};
-use desktop_grouping::{
-  graphics::graphics::{parse_color, MyGraphics}, win32::ui_wam
-};
+use desktop_grouping::win32::ui_wam;
 
 use rand::Rng;
 use tiny_skia::Color;
-use windows::{core::HSTRING, Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONWARNING, MB_YESNO}};
 use winit::{
-  dpi::{PhysicalPosition, PhysicalSize}, event_loop::{EventLoop, EventLoopWindowTarget}, platform::windows::WindowBuilderExtWindows, window::{Window, WindowBuilder, WindowId}
+  dpi::PhysicalPosition, window::{Window, WindowId, ResizeDirection}
 };
 
 use crate::{
-  file_drag::IconInfo, logger::*, settings::*
+  file_drag::IconInfo, logger::*, settings::*, child_window::*, window_utils::show_confirmation_dialog
 };
 
 /// ダブルクリックと判定する時間閾値 (ミリ秒)
 const DOUBLE_CLICK_THRESHOLD_MS: u64 = 500;
-/// マウスホイールによるアルファ値調整のステップ量
-const ALPHA_ADJUST_STEP: f32 = 0.02; // <- 定数として定義 (値は 0.01, 0.05 など好みに合わせて調整)
 
 /// アプリケーション内で発生するカスタムイベント。
 /// 現在はトレイアイコンのメニューイベントのみ。
@@ -58,148 +52,6 @@ pub struct WindowControl {
   pub keybord_pressed: bool,
   /// マウスの左ボタンが押されているか。
   pub mouse_pressed: bool,
-}
-
-/// 子ウィンドウを表す構造体。
-/// winit の `Window`、描画を担当する `MyGraphics`、
-/// グループ化されたアイコン (`IconInfo`) のリスト、
-/// そして設定ファイルと紐付けるための識別子 (`id_str`) を保持します。
-pub struct ChildWindow {
-  /// winit のウィンドウインスタンスへの参照カウンタ付きポインタ。
-  window: Rc<Window>,
-  /// このウィンドウ専用のグラフィックス描画インスタンス。
-  graphics: MyGraphics,
-  /// このウィンドウ内に配置されたアイコン情報のベクター。
-  groups: Vec<IconInfo>,
-  /// 設定ファイル (`config.toml`) 内の `[children]` テーブルと
-  /// このウィンドウインスタンスを紐付けるためのユニークな文字列ID。
-  /// 通常は生成時のタイムスタンプ。
-  id_str: String,
-}
-
-impl ChildWindow {
-  /// 新しい子ウィンドウインスタンスを作成します。
-  ///
-  /// # 引数
-  ///
-  /// * `window` - 作成済みの `winit::window::Window` インスタンス (Rcでラップ)。
-  /// * `id_str` - このウィンドウを識別するためのユニークな文字列ID。設定の読み書きに使用。
-  ///
-  /// # 戻り値
-  ///
-  /// 新しい `ChildWindow` インスタンス。
-  pub fn new(window: Rc<Window>, id_str: String, bg_color_str: &str, border_color_str: &str) -> ChildWindow {
-    // ウィンドウに紐付いたグラフィックスインスタンスを作成
-    let graphics = MyGraphics::new(&window, bg_color_str, border_color_str);
-    // 注意: この時点では設定ファイルへの書き込みは行わない。
-    //       設定の初期値挿入は、ウィンドウ作成時 (main.rs の MenuEvent ハンドラなど) で行う。
-
-    return ChildWindow {
-      window,
-      graphics,
-      groups: Vec::new(), // 最初は空のアイコンリスト
-      id_str, // 引数で受け取ったIDを保存
-    };
-  }
-
-  /// 背景色を設定し、枠線色を自動計算して適用します。
-  pub fn set_background_color(&mut self, color_str: &str) {
-    if let Some(bg_color) = parse_color(color_str) {
-      // 背景色をグラフィックスに適用
-      self.graphics.update_background_color(bg_color);
-
-      // 枠線色を計算
-      let border_color = calculate_border_color(bg_color, &self.id_str);
-      // 枠線色をグラフィックスに適用
-      self.graphics.update_border_color(border_color);
-
-      // 再描画を要求
-      self.window.request_redraw();
-      log_debug(&format!("Window {}: BG set to {}, Border calculated to {}", self.id_str, color_to_hex_string(bg_color), color_to_hex_string(border_color)));
-    } else {
-      log_warn(&format!("Window {}: Invalid color string received: {}", self.id_str, color_str));
-    }
-  }
-
-  /// 背景色の透過度を調整します。
-  pub fn adjust_alpha(&mut self, delta: f32) { // delta は -1.0 〜 1.0 のような変化量
-    let current_bg_color = self.graphics.get_background_color();
-    let current_alpha = current_bg_color.alpha();
-    // アルファ値を増減 (0.0 〜 1.0 の範囲にクランプ)
-    // delta のスケール調整が必要 (例: ホイール1段階で 0.1 変化させるなど)
-    let new_alpha = (current_alpha + delta * ALPHA_ADJUST_STEP).clamp(0.0, 1.0);
-
-    if (new_alpha - current_alpha).abs() > f32::EPSILON { // 変化があった場合のみ
-      let new_bg_color = Color::from_rgba(
-        current_bg_color.red(),
-        current_bg_color.green(),
-        current_bg_color.blue(),
-        new_alpha,
-      ).unwrap(); // 範囲内なので unwrap OK
-
-      // 新しい背景色を適用
-      self.graphics.update_background_color(new_bg_color);
-
-      // 枠線色を再計算 (輝度が変わる可能性があるため)
-      let border_color = calculate_border_color(new_bg_color, &self.id_str);
-      self.graphics.update_border_color(border_color);
-
-      // 再描画を要求
-      self.window.request_redraw();
-      log_debug(&format!(
-        "Window {}: Alpha adjusted to {:.3}, Border recalculated to {}", 
-        self.id_str, new_alpha, color_to_hex_string(border_color)));
-    }
-  }
-
-  /// この子ウィンドウにアイコン情報を追加します。
-  ///
-  /// # 引数
-  ///
-  /// * `icon` - 追加するアイコンの情報 (`IconInfo`)。
-  pub fn add(&mut self, icon: IconInfo) {
-    self.groups.push(icon);
-    // アイコン追加後に再描画を要求 (任意)
-    // self.window.request_redraw();
-  }
-
-  /// ウィンドウのサイズが変更されたときに呼び出されます。
-  /// グラフィックスバッファを新しいサイズに合わせてリサイズします。
-  ///
-  /// # 引数
-  ///
-  /// * `new_size` - 新しいウィンドウの物理サイズ (`PhysicalSize<u32>`)。
-  pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-    self.graphics.resize(new_size);
-    // 注意: サイズ変更自体はここで処理するが、設定ファイルへの保存は
-    //       通常、アプリケーション終了時に `update_settings_from_windows` 経由で行われる。
-    //       リアルタイムで保存したい場合は、ここでも設定更新ロジックを呼ぶ必要がある。
-  }
-
-  /// ウィンドウの内容を描画します。
-  /// 背景、ボーダー、そして保持しているすべてのアイコンを描画します。
-  ///
-  /// # 引数
-  ///
-  /// * `hovered_index` - 現在マウスカーソルがホバーしているアイコンのインデックス (存在する場合)。
-  ///                     ホバー状態のアイコンを強調表示するために使用。
-  pub fn draw(&mut self, hovered_index: Option<usize>) {
-    // 描画開始 (背景クリアなど)
-    self.graphics.draw_start();
-
-    // 保持しているアイコンを順番に描画
-    let mut index = 0;
-    self.groups.iter().for_each(|icon_info| {
-      // このアイコンがホバーされているか判定
-      let is_hovered = hovered_index.map_or(false, |h_idx| h_idx == index);
-      // グラフィックスインスタンスに描画を依頼
-      self.graphics.draw_group(index, icon_info.name.clone(), &icon_info.icon, is_hovered);
-      index += 1;
-    });
-
-    // 描画完了 (フレームバッファを画面に表示)
-    self.graphics.draw_finish();
-  }
 }
 
 impl WindowControl {
@@ -297,7 +149,7 @@ impl WindowManager {
                 // アルファ値はデフォルトの半透明 (0x99 = 153) にする (既存のデフォルトに合わせる)
                 // もし不透明にしたければ 255 にする
                 let random_color = Color::from_rgba8(r, g, b, 153);
-
+                
                 // 生成した Color を #RRGGBBAA 形式の文字列に変換
                 // (既存の color_to_hex_string ヘルパー関数を利用)
                 let color_str = color_to_hex_string(random_color);
@@ -491,37 +343,32 @@ impl WindowManager {
       return; // 条件を満たさなければ何もしない
     }
     // フォーカスされている子ウィンドウを取得
-    let child = self.children.get(&self.focused_id.unwrap())
-      .expect("ドラッグ対象の子ウィンドウ取得に失敗"); // 基本的に発生しないはず
-    // OSにウィンドウのドラッグ開始を指示
-    let _ = child.window.drag_window();
-    // 注意: 移動後の位置の保存は、アプリケーション終了時に行われる。
+    if let Some(focused_id) = self.focused_id {
+      if let Some(child) = self.children.get(&focused_id) {
+        child.start_os_drag(); // ChildWindow ちゃんにお願い！
+      } else {
+        log_error(&format!("Drag target child window not found for focused_id: {:?}", focused_id));
+      }
+    }
   }
 
   /// ウィンドウのリサイズ操作を開始します。
-  /// リサイズキー (Shift) とマウス左ボタンが両方押されており、
-  /// かつフォーカスされているウィンドウがある場合に、OSにウィンドウリサイズを依頼します。
-  /// 現在は右下方向へのリサイズのみ実装。
   pub fn start_resizing(&mut self) {
     // リサイズ操作が可能かチェック
     if !self.is_resizing.can_control() || self.focused_id.is_none() {
       return; // 条件を満たさなければ何もしない
     }
     // フォーカスされている子ウィンドウを取得
-    let child =
-      self.children.get(&self.focused_id.unwrap())
-        .expect("リサイズ対象の子ウィンドウ取得に失敗"); // 基本的に発生しないはず
-    // OSにウィンドウのドラッグリサイズ開始を指示 (右下方向)
-    let _ = child.window.drag_resize_window(
-      winit::window::ResizeDirection::SouthEast).unwrap(); // エラー処理は簡略化
-     // 注意: リサイズ後のサイズの保存は、アプリケーション終了時に行われる。
+    if let Some(focused_id) = self.focused_id {
+      if let Some(child) = self.children.get(&focused_id) {
+        child.start_os_resize(ResizeDirection::SouthEast); // ChildWindow ちゃんにお願い！
+      } else {
+        log_error(&format!("Resize target child window not found for focused_id: {:?}", focused_id));
+      }
+    }
   }
 
   /// 指定されたIDのウィンドウをデスクトップの最背面 (他のウィンドウの後ろ) に移動します。
-  ///
-  /// # 引数
-  ///
-  /// * `id` - 最背面に移動するウィンドウの `WindowId`。
   pub fn backmost(&mut self, id: &WindowId) {
     // 対象の子ウィンドウを取得
     let child =
@@ -532,10 +379,6 @@ impl WindowManager {
   }
 
   /// 指定されたIDのウィンドウの内容を描画します。
-  ///
-  /// # 引数
-  ///
-  /// * `id` - 描画するウィンドウの `WindowId`。
   pub fn draw_window(&mut self, id: &WindowId) {
     // 管理している子ウィンドウがない場合は何もしない
     if self.children.is_empty() {
@@ -557,12 +400,6 @@ impl WindowManager {
   }
 
   /// 指定されたIDのウィンドウのサイズが変更されたときに呼び出されます。
-  /// 対応する `ChildWindow` の `resize` メソッドを呼び出し、再描画を要求します。
-  ///
-  /// # 引数
-  ///
-  /// * `id` - サイズが変更されたウィンドウの `WindowId`。
-  /// * `new_size` - 新しいウィンドウの物理サイズ (`PhysicalSize<u32>`)。
   pub fn resize(&mut self, id: &WindowId, new_size: winit::dpi::PhysicalSize<u32>) {
     // 管理している子ウィンドウがない場合は何もしない
     if self.children.is_empty() {
@@ -571,18 +408,13 @@ impl WindowManager {
     // 対象の子ウィンドウ (可変参照) を取得
     if let Some(child) = self.children.get_mut(id) {
       // ChildWindow の resize メソッドを呼び出す
-      child.resize(new_size);
+      child.resize_graphics(new_size); // グラフィックスのリサイズを指示
       // サイズ変更後に再描画を要求
       child.window.request_redraw();
     }
   }
 
   /// 現在フォーカスされている子ウィンドウにアイコン情報を追加します。
-  /// ファイルがドロップされた際などに呼び出されます。
-  ///
-  /// # 引数
-  ///
-  /// * `icon` - 追加するアイコンの情報 (`IconInfo`)。
   pub fn add_group(&mut self, icon: IconInfo) {
     // 子ウィンドウがない、またはフォーカスされているウィンドウがない場合は何もしない
     if self.children.is_empty() || self.focused_id.is_none() {
@@ -601,22 +433,11 @@ impl WindowManager {
   }
 
   /// 指定されたウィンドウにおけるマウスカーソルの最新位置を記録します。
-  /// アイコンのクリック/ホバー判定に使用されます。
-  ///
-  /// # 引数
-  ///
-  /// * `window_id` - カーソル位置を記録する対象のウィンドウID。
-  /// * `position` - 記録するカーソルの物理座標 (`PhysicalPosition<f64>`)。
   pub fn update_cursor_pos(&mut self, window_id: WindowId, position: PhysicalPosition<f64>) {
     self.last_cursor_pos.insert(window_id, position);
   }
 
   /// マウスの左クリックイベントを処理します。
-  /// ダブルクリックを検出し、クリックされた位置にあるアイコンを実行（開く）します。
-  ///
-  /// # 引数
-  ///
-  /// * `window_id` - クリックイベントが発生したウィンドウのID。
   pub fn execute_group_item(&mut self, window_id: WindowId) {
     let now = Instant::now(); // 現在時刻を取得
     let mut is_double_click = false; // ダブルクリックフラグ
@@ -663,11 +484,6 @@ impl WindowManager {
   }
 
   /// マウスの右クリックイベント (Ctrlキー同時押し) を処理します。
-  /// クリックされた位置にあるアイコンを削除します。
-  ///
-  /// # 引数
-  ///
-  /// * `window_id` - 右クリックイベントが発生したウィンドウのID。
   pub fn remove_group_item(&mut self, window_id: WindowId) {
     // Ctrlキーが押されているか確認 (is_moving.keybord_pressed で代用)
     if !self.is_moving.keybord_pressed {
@@ -696,10 +512,6 @@ impl WindowManager {
 
   /// アイコンが右クリックされたときに、そのアイコンのファイルの場所をエクスプローラーで開くよ！
   /// Ctrlキーが押されて *いない* 右クリックのときに呼ばれるんだ♪
-  ///
-  /// # 引数
-  ///
-  /// * `window_id` - どこのウィンドウで右クリックされたか教えてね！
   pub fn open_icon_location(&mut self, window_id: WindowId) {
       // まず、どこをクリックしたか思い出すよ (最後に記録したカーソル位置！)
       if let Some(cursor_pos) = self.last_cursor_pos.get(&window_id).cloned() {
@@ -737,9 +549,6 @@ impl WindowManager {
   }
 
   /// ウィンドウ削除の要求を受け付け、確認ダイアログを表示するメソッド。
-  ///
-  /// # 引数
-  /// * `window_id` - 削除対象のウィンドウID。
   fn request_remove_window(&mut self, window_id: WindowId) {
     // 確認ダイアログを表示し、ユーザーが「はい」を押した場合のみ削除処理を実行
     if show_confirmation_dialog() {
@@ -752,9 +561,6 @@ impl WindowManager {
 
   /// 指定されたウィンドウIDに対応する子ウィンドウと関連データを削除するメソッド。
   /// 設定ファイルからも該当エントリを削除します。
-  ///
-  /// # 引数
-  /// * `window_id` - 削除するウィンドウID。
   fn remove_window(&mut self, window_id: WindowId) {
     // 1. 設定ファイルから削除するために id_str を取得
     let id_str_to_remove = if let Some(child) = self.children.get(&window_id) {
@@ -807,11 +613,6 @@ impl WindowManager {
   }
 
   /// 指定されたウィンドウの、指定されたインデックスにあるアイコンを削除します。
-  ///
-  /// # 引数
-  ///
-  /// * `window_id` - アイコンを削除する対象のウィンドウID。
-  /// * `index` - 削除するアイコンのインデックス。
   fn remove_item(&mut self, window_id: WindowId, index: usize) {
     // 対象の子ウィンドウ (可変参照) を取得
     if let Some(child) = self.children.get_mut(&window_id) {
@@ -834,16 +635,6 @@ impl WindowManager {
 
   /// 指定されたウィンドウ内の特定の物理座標 (`PhysicalPosition`) に
   /// どのアイコンが存在するかを判定します。
-  ///
-  /// # 引数
-  ///
-  /// * `window_id` - 判定対象のウィンドウID。
-  /// * `cursor_pos_rel` - 判定するウィンドウ内の物理座標 (winitからf64で渡される)。
-  ///
-  /// # 戻り値
-  ///
-  /// アイコンが見つかった場合は `Some((WindowId, usize))` (ウィンドウIDとアイコンインデックス)、
-  /// 見つからなかった場合は `None`。
   pub fn find_icon_at_relative_pos(
     &self,
     window_id: WindowId,
@@ -877,11 +668,6 @@ impl WindowManager {
 
   /// マウスカーソルのホバー状態を更新し、必要に応じて再描画を要求します。
   /// カーソルが新しいアイコン上に移動した、またはアイコンから離れた場合に呼び出されます。
-  ///
-  /// # 引数
-  ///
-  /// * `new_hover` - 新しいホバー状態 `Option<(WindowId, usize)>`。
-  ///                 カーソルがアイコン上にあれば `Some`、なければ `None`。
   pub fn update_hover_state(&mut self, new_hover: Option<(WindowId, usize)>) {
     let old_hover = self.hovered_icon; // 更新前のホバー状態を保持
     // ホバー状態が変化していなければ何もしない
@@ -911,158 +697,4 @@ impl WindowManager {
     }
   }
 
-}
-
-/// メインウィンドウを作成します (通常は非表示)。
-/// アプリケーションの生存期間中、イベントループを維持するために存在します。
-///
-/// # 引数
-///
-/// * `event_loop` - アプリケーションのイベントループ。
-///
-/// # 戻り値
-///
-/// 作成された非表示のメインウィンドウ。
-pub fn create_main_window(event_loop: &EventLoop<UserEvent>) -> Window {
-  let window = WindowBuilder::new()
-    .with_visible(false) // 表示しない
-    .with_active(false)  // アクティブにしない
-    .with_title("Desktop Grouping (Main)") // 識別用のタイトル (任意)
-    .build(event_loop)
-    .expect("メインウィンドウの作成に失敗しました");
-
-  return window;
-}
-
-/// 新しい子ウィンドウを作成します。
-/// 設定に基づいて初期位置とサイズを設定できます。
-///
-/// # 引数
-///
-/// * `event_loop_target` - ウィンドウを作成するためのイベントループターゲット。
-///                         `main.rs` の `event_loop.run` クロージャ内で `target` として渡される。
-/// * `settings` - このウィンドウの初期設定 (`ChildSettings`) へのオプション参照。
-///                `Some` の場合はその設定値を、`None` の場合はデフォルト値を使用。
-///
-/// # 戻り値
-///
-/// 作成された子ウィンドウ (`winit::window::Window`)。
-pub fn create_child_window(
-  event_loop_target: &EventLoopWindowTarget<UserEvent>, // <- &EventLoop ではなくこちら
-  settings: Option<&ChildSettings>, // 初期設定 (任意)
-) -> Window {
-  // ウィンドウビルダーを初期化 (共通設定)
-  let mut builder = WindowBuilder::new()
-    .with_title("Desktop Grouping") // ウィンドウタイトル
-    .with_visible(true) // 最初から表示する
-    .with_active(false) // アクティブにはしない (フォーカスを奪わない)
-    .with_skip_taskbar(true) // タスクバーに表示しない
-    .with_resizable(true) // サイズ変更可能
-    .with_transparent(true) // 透明ウィンドウを有効化
-    .with_decorations(false); // タイトルバーなどの装飾を非表示
-
-  // 設定に基づいて初期位置とサイズを設定
-  if let Some(s) = settings {
-    // 設定値が存在する場合
-    builder = builder
-      .with_position(PhysicalPosition::new(s.x, s.y)) // 設定から位置を設定
-      .with_inner_size(PhysicalSize::new(s.width, s.height)); // 設定からサイズを設定
-                                                               // TODO: 必要であれば、背景色やボーダー色などもここで設定する
-                                                               //       (WindowBuilder が対応していれば。そうでなければ MyGraphics 初期化時に渡す)
-  } else {
-    // 設定値がない場合 (新規作成時など) はデフォルト値を使用
-    let default_settings = ChildSettings::default();
-    builder = builder
-      .with_position(PhysicalPosition::new(
-        default_settings.x,
-        default_settings.y,
-      ))
-      .with_inner_size(PhysicalSize::new(
-        default_settings.width,
-        default_settings.height,
-      ));
-  }
-
-  // ウィンドウをビルド
-  let window = builder
-    .build(event_loop_target) // event_loop_target を使用
-    .expect("子ウィンドウの作成に失敗しました");
-
-  return window;
-}
-
-/// ウィンドウ削除の確認ダイアログを表示する関数。
-///
-/// # 戻り値
-/// ユーザーが「はい」を選択した場合は `true`、それ以外は `false`。
-fn show_confirmation_dialog() -> bool {
-  let title = HSTRING::from("確認"); // ダイアログのタイトル
-  let message = HSTRING::from("このグループウィンドウを削除しますか？\n(この操作は元に戻せません)"); // 表示メッセージ
-
-  // MessageBoxW を呼び出す
-  // unsafe ブロックが必要になる場合があるが、windows-rs の最近のバージョンでは不要なことが多い
-  let result = unsafe {
-    MessageBoxW(
-      None, // 親ウィンドウなし
-      &message, // メッセージ
-      &title, // タイトル
-      MB_YESNO | MB_ICONWARNING, // ボタンの種類とアイコン
-    )
-  };
-
-  // ユーザーが「はい」(IDYES) を押したかどうかを返す
-  result == IDYES
-}
-
-fn calculate_border_color(bg_color: Color, id_str: &str) -> Color {
-  // 1. ハッシュ生成
-  let mut hasher = DefaultHasher::new();
-  id_str.hash(&mut hasher);
-  let hash = hasher.finish();
-
-  // 2. 背景色を HSL に変換 (colorsys を使用)
-  let bg_rgb = Rgb::from((bg_color.red() as f64 * 255.0, bg_color.green() as f64 * 255.0, bg_color.blue() as f64 * 255.0));
-  let bg_hsl: Hsl = bg_rgb.as_ref().into(); // Hsl に変換
-
-  // 3. 補色の計算 (色相を180度回転)
-  let mut border_hsl = bg_hsl.clone();
-  border_hsl.set_hue((bg_hsl.hue() + 180.0) % 360.0);
-
-  // 4. 輝度差確保 (簡易版: 背景が明るければ暗く、暗ければ明るく)
-  let bg_luminance = bg_hsl.lightness(); // 0-100
-  if bg_luminance > 50.0 { // 背景が明るい場合
-    // 枠線を暗くする (輝度を 0-40 の範囲に調整)
-    border_hsl.set_lightness(border_hsl.lightness().min(40.0));
-  } else { // 背景が暗い場合
-    // 枠線を明るくする (輝度を 60-100 の範囲に調整)
-    border_hsl.set_lightness(border_hsl.lightness().max(60.0));
-  }
-  // 彩度も調整 (例: 最低限の彩度を確保)
-  border_hsl.set_saturation(border_hsl.saturation().max(30.0));
-
-  // 5. ハッシュ値による微調整 (例: 色相を少しずらす)
-  let hue_shift = (hash % 21) as f64 - 10.0; // -10 から +10 の範囲
-  border_hsl.set_hue((border_hsl.hue() + hue_shift + 360.0) % 360.0);
-
-  // 6. HSL から RGB に戻す
-  let border_rgb: Rgb = (&border_hsl).into();
-
-  // 7. tiny_skia::Color に変換 (アルファは不透明 FF とする)
-  Color::from_rgba8(
-    border_rgb.red() as u8,
-    border_rgb.green() as u8,
-    border_rgb.blue() as u8,
-    255, // 枠線は不透明
-  )
-}
-
-// 色を #RRGGBBAA 文字列に変換するヘルパー (設定保存用)
-fn color_to_hex_string(color: Color) -> String {
-    format!(
-        "#{:02X}{:02X}{:02X}{:02X}",
-        (color.red() * 255.0) as u8,
-        (color.green() * 255.0) as u8,
-        (color.blue() * 255.0) as u8,
-        (color.alpha() * 255.0) as u8
-    )
 }

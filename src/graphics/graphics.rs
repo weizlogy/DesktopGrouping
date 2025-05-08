@@ -283,7 +283,7 @@ impl MyGraphics {
   pub fn draw_group(
     &mut self,
     index: usize,
-    icon_name: String,
+    icon_name: &String,
     icon_data: &(BITMAPINFO, Vec<u8>),
     is_hovered: bool) {
 

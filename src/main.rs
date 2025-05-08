@@ -4,6 +4,8 @@
 mod file_drag;
 mod logger;
 mod mywindow;
+mod child_window; // 新しいお家を教えてあげるよ！
+mod window_utils; // 便利屋さんのお家も教えてあげる！
 mod settings;
 
 use std::rc::Rc;
@@ -45,7 +47,7 @@ fn main() {
     .expect("Failed to create event loop");
 
   // メインウィンドウ作成 (非表示)
-  let _main_window = mywindow::create_main_window(&event_loop);
+  let _main_window = window_utils::create_main_window(&event_loop); // 便利屋さんにお願い！
 
   // WindowManager の初期化
   // WindowManager の初期化時にクリップボードも初期化
@@ -134,7 +136,7 @@ fn handle_new_events_init(
             let mut effective_settings = child_setting.clone();
             effective_settings.x = initial_position.x;
             effective_settings.y = initial_position.y;
-            let child_window = mywindow::create_child_window(&target, Some(&effective_settings));
+            let child_window = window_utils::create_child_window(&target, Some(&effective_settings)); // 便利屋さんにお願い！
             let child_window_id = child_window.id();
 
             // アイコン復元処理だよっ！
@@ -309,7 +311,7 @@ fn handle_user_event(
                     settings_writer.children.insert(new_id_str.clone(), default_settings.clone());
                     log_info(&format!("Inserted default settings for new window: {}", new_id_str));
                 }
-                let child_window = mywindow::create_child_window(target, Some(&default_settings));
+                let child_window = window_utils::create_child_window(target, Some(&default_settings)); // 便利屋さんにお願い！
                 let child_window_id = child_window.id();
                 manager.insert(&child_window_id, Rc::new(child_window), new_id_str, &default_settings);
                 manager.backmost(&child_window_id);
