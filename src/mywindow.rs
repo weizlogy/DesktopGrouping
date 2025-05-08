@@ -371,7 +371,33 @@ impl WindowManager {
     if let Some(child_settings) = settings.children.get_mut(&id_str) {
       // --- 位置とサイズの保存 ---
       match child_window.window.outer_position() {
-        Ok(pos) => { child_settings.x = pos.x; child_settings.y = pos.y; }
+        Ok(pos) => {
+          child_settings.x = pos.x; // 仮想デスクトップ座標 (今まで通り！)
+          child_settings.y = pos.y; // 仮想デスクトップ座標 (今まで通り！)
+
+          // --- マルチモニター情報の保存だよっ！ ---
+          if let Some(monitor) = child_window.window.current_monitor() {
+            child_settings.monitor_name = monitor.name(); // モニターの名前をゲット！
+            let monitor_pos = monitor.position(); // モニター自体の仮想座標
+            child_settings.monitor_x = Some(pos.x - monitor_pos.x); // モニター内での相対X座標！
+            child_settings.monitor_y = Some(pos.y - monitor_pos.y); // モニター内での相対Y座標！
+            log_debug(&format!(
+                "Window {} on monitor '{}' (virt: {:?}, mon_pos: {:?}, rel: ({:?}, {:?}))",
+                id_str,
+                child_settings.monitor_name.as_deref().unwrap_or("N/A"),
+                pos,
+                monitor_pos,
+                child_settings.monitor_x,
+                child_settings.monitor_y
+            ));
+          } else {
+            // あれれ？モニターが取れなかった…(´・ω・｀) 情報はクリアしとこっと。
+            child_settings.monitor_name = None;
+            child_settings.monitor_x = None;
+            child_settings.monitor_y = None;
+            log_warn(&format!("Window {} - Could not get current monitor.", id_str));
+          }
+        }
         Err(e) => { log_error(&format!("ウィンドウの位置取得に失敗 (id_str: {}): {}", id_str, e)); }
       }
       let size = child_window.window.inner_size();

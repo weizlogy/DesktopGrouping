@@ -11,14 +11,14 @@ use std::rc::Rc;
 use arboard::Clipboard;
 use desktop_grouping::tray::tray_icon::create_tray;
 use file_drag::IconInfo;
-use logger::{log_debug, log_info};
+use logger::{log_debug, log_info, log_warn};
 use mywindow::UserEvent;
 
 // generate_child_id, ChildSettings など必要なものをインポート
 use settings::{
   generate_child_id, get_settings_reader, get_settings_writer, ChildSettings,
 };
-use winit::{
+use winit::{dpi::PhysicalPosition,
   event::{DeviceEvent, ElementState, Event, MouseButton, MouseScrollDelta, StartCause, WindowEvent},
   event_loop::{ControlFlow, EventLoopBuilder},
   keyboard::{Key, NamedKey},
@@ -93,8 +93,48 @@ fn handle_new_events_init(
         let settings_reader = get_settings_reader();
         for (id_str, child_setting) in settings_reader.children.iter() {
             log_info(&format!("Loading child window: {}", id_str));
+            // --- ウィンドウの初期位置を決めるよ！ ---
+            let mut initial_position = PhysicalPosition::new(child_setting.x, child_setting.y); // まずは今までの仮想座標を使うね！
 
-            let child_window = mywindow::create_child_window(&target, Some(child_setting));
+            // もしモニター情報があったら…
+            if let (Some(monitor_name), Some(monitor_x), Some(monitor_y)) =
+                (&child_setting.monitor_name, child_setting.monitor_x, child_setting.monitor_y)
+            {
+                let mut found_monitor = false;
+                // 今つながってるモニターの中に、覚えてた名前のモニターがあるか探すよ！
+                for monitor_handle in target.available_monitors() {
+                    if monitor_handle.name().as_deref() == Some(monitor_name.as_str()) {
+                        // あった！٩(ˊᗜˋ*)و
+                        let current_monitor_pos = monitor_handle.position(); // そのモニターの今の場所
+                        // 新しいウィンドウの位置を計算するよ！ (モニターの場所 + モニターの中の相対的な場所)
+                        initial_position.x = current_monitor_pos.x + monitor_x;
+                        initial_position.y = current_monitor_pos.y + monitor_y;
+                        log_info(&format!(
+                            "Window {} restored to monitor '{}' at relative ({}, {}), virtual ({}, {})",
+                            id_str, monitor_name, monitor_x, monitor_y, initial_position.x, initial_position.y
+                        ));
+                        found_monitor = true;
+                        break; // 見つかったからループは終わり！
+                    }
+                }
+                if !found_monitor {
+                    // あれ～？覚えてたモニターが見つからなかった…(´・ω・`)
+                    log_warn(&format!(
+                        "Window {} - Monitor '{}' not found. Falling back to virtual coordinates ({}, {}).",
+                        id_str, monitor_name, child_setting.x, child_setting.y
+                    ));
+                }
+            } else {
+                // モニター情報がなかったから、今まで通り仮想座標を使うね！
+                log_info(&format!(
+                    "Window {} - No monitor-specific info. Using virtual coordinates ({}, {}).",
+                    id_str, child_setting.x, child_setting.y
+                ));
+            }
+            let mut effective_settings = child_setting.clone();
+            effective_settings.x = initial_position.x;
+            effective_settings.y = initial_position.y;
+            let child_window = mywindow::create_child_window(&target, Some(&effective_settings));
             let child_window_id = child_window.id();
 
             // アイコン復元処理だよっ！

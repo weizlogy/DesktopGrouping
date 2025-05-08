@@ -41,6 +41,10 @@ pub struct ChildSettings {
   pub bg_color: String,
   pub border_color: String,
   pub icons: Vec<PersistentIconInfo>,
+  // --- マルチモニター対応のための追加フィールド ---
+  pub monitor_name: Option<String>, // ウィンドウが最後にあったモニターの名前だよ！
+  pub monitor_x: Option<i32>,     // そのモニター内での相対X座標だよ！
+  pub monitor_y: Option<i32>,     // そのモニター内での相対Y座標だよ！
 }
 
 // --- デフォルト値の実装 ---
@@ -73,6 +77,9 @@ impl Default for ChildSettings {
       bg_color: "#FFFFFF99".to_string(),
       border_color: "#000000FF".to_string(),
       icons: Vec::new(),
+      monitor_name: None, // 最初はモニターの情報はナシ！
+      monitor_x: None,
+      monitor_y: None,
     }
   }
 }
