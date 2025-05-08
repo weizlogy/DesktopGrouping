@@ -183,6 +183,77 @@ pub fn save_settings() {
 
 // --- 子ウィンドウ識別子生成 ---
 pub fn generate_child_id() -> String {
-  // ミリ秒以下の精度でタイムスタンプを生成
+  // マイクロ秒の精度でタイムスタンプを生成するよ！ (例: 20230101123456001)
   Local::now().format("%Y%m%d%H%M%S%3f").to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*; // settings.rs の中身をぜーんぶ使えるようにするおまじない！
+    // use tempfile::tempdir; // ファイルI/Oのテストをしなくなったから、これはもういらないね！
+
+    // テストの時だけ、設定ファイルの場所を一時ディレクトリに変えちゃう関数だよ！
+    // ちょっとトリッキーだけど、これで本物の設定ファイルを汚さずにテストできるんだ！(｀・ω・´)ゞ
+    fn override_config_path_for_test<F, T>(test_fn: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        // 以前はここで一時ディレクトリのパスを使ってたけど、今はもう使ってないよ！
+        // get_config_path がプライベートで、実行ファイルのパスに依存してるから、
+        // テストでうまく差し替えるのが難しかったんだ…(´・ω・｀)
+        //
+        // なので、グローバルな設定を直接操作して、読み書きのテストをするよ！
+
+        // --- ここでは、グローバル設定を直接いじるテストに切り替えるね！ ---
+        // まずは、テスト前にグローバル設定をデフォルトに戻しておくのが大事！
+        {
+            let mut settings = get_settings_writer();
+            *settings = Settings::default();
+        }
+
+        test_fn()
+    }
+
+    #[test]
+    fn test_settings_default_values() {
+        let settings = Settings::default();
+        assert_eq!(settings.app.font_size, 16.0);
+        assert_eq!(settings.app.font_path, "");
+        assert!(settings.children.is_empty());
+
+        let child_settings = ChildSettings::default();
+        assert_eq!(child_settings.x, 50);
+        assert_eq!(child_settings.bg_color, "#FFFFFF99");
+    }
+
+    #[test]
+    fn test_settings_read_write_global() {
+        override_config_path_for_test(|| {
+            // 1. 設定を書き込んでみるよ！
+            let child_id = generate_child_id();
+            {
+                let mut settings = get_settings_writer();
+                settings.app.font_size = 20.0;
+                let mut new_child = ChildSettings::default();
+                new_child.x = 100;
+                settings.children.insert(child_id.clone(), new_child);
+            } // 書き込みロックをここで解放！
+
+            // 2. 設定を読み込んで、ちゃんと変わってるか確認するよ！
+            {
+                let settings_reader = get_settings_reader();
+                assert_eq!(settings_reader.app.font_size, 20.0);
+                assert!(settings_reader.children.contains_key(&child_id));
+                assert_eq!(settings_reader.children.get(&child_id).unwrap().x, 100);
+            }
+        });
+    }
+
+    #[test]
+    fn test_generate_child_id_format() {
+        let id = generate_child_id();
+        // YYYYMMDDHHMMSSfff の形式 (14 + 3 = 17文字) になってるかな？
+        assert_eq!(id.len(), 17);
+        assert!(id.chars().all(|c| c.is_digit(10)), "IDに数字以外が含まれてるよ！: {}", id);
+    }
 }

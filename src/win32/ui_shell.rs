@@ -5,7 +5,7 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS};
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Controls::IImageList;
-use windows::Win32::UI::Shell::{SHGetFileInfoW, SHGetFolderPathW, SHGetImageList, CSIDL_FONTS, SHFILEINFOW, SHGFI_SYSICONINDEX};
+use windows::Win32::UI::Shell::{SHGetFileInfoW, SHGetFolderPathW, SHGetImageList, CSIDL_FONTS, SHFILEINFOW, SHGFI_SYSICONINDEX, SHIL_EXTRALARGE}; // SHIL_EXTRALARGE はこっちにいたよ！
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
 
 // 使用例
@@ -45,8 +45,7 @@ pub fn get_file_icon(path: &Path) -> Result<(BITMAPINFO, Vec<u8>)> {
     let icon_index = sh_file_info.iIcon; // アイコンインデックスを取得
 
     // SHGetImageList で 48x48 (SHIL_EXTRALARGE) のイメージリストを取得
-    let himagelist: IImageList =
-      SHGetImageList::<IImageList>(0x00000002 /* SHIL_EXTRALARGE */)
+    let himagelist: IImageList = SHGetImageList::<IImageList>(SHIL_EXTRALARGE as i32) // u32 から i32 にキャスト！
         .expect("Failed to get image list"); // SHIL_EXTRALARGE (48x48)
 
     // ImageList_GetIcon で HICON を取得
@@ -83,8 +82,6 @@ pub fn get_file_icon(path: &Path) -> Result<(BITMAPINFO, Vec<u8>)> {
     if GetObjectW(hbm, obj_size, Some(&mut bmp as *mut _ as *mut std::ffi::c_void)) == 0 {
         return Err(Error::from_win32());
     }
-    // 取得したビットマップのサイズをログ出力 (48x48 になっているか確認)
-    println!("BITMAP dimensions: {}x{}", bmp.bmWidth, bmp.bmHeight);
 
     // BITMAPINFOHEADER の作成
     let mut bmih = BITMAPINFOHEADER {
