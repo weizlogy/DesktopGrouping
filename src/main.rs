@@ -201,6 +201,32 @@ fn handle_window_event(
                 _ => {}
             }
         }
+        WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+            // --- スケールファクター変更イベントの処理 ---
+            // `ScaleFactorChanged` イベントは、ウィンドウのDPIスケーリングが変わった時に発生するよ！
+            // これを検知して、ウィンドウの見た目の位置と、中身の描画スケールを調整するんだ。
+            // `new_inner_size` は winit の最近のバージョンではこのイベントに含まれなくなったみたい。
+            // サイズの変更は `Resized` イベントで処理されるから、ここでは主にスケールファクターの更新と
+            // それに伴う位置の調整、再描画の要求をするよ！
+            log_info(&format!("Window {:?}: ScaleFactorChanged to {}", window_id, scale_factor));
+            if let Some(child_window) = manager.get_child_window_mut(&window_id) {
+                let old_scale_factor = child_window.scale_factor; // 前の拡大率を覚えておく
+                child_window.update_scale_factor(scale_factor);   // 新しい拡大率を ChildWindow と MyGraphics に教える
+
+                // 見た目の位置が変わらないように、物理的な位置を調整するよ！
+                if let Ok(current_physical_pos) = child_window.window.outer_position() {
+                    let logical_pos_x = current_physical_pos.x as f64 / old_scale_factor;
+                    let logical_pos_y = current_physical_pos.y as f64 / old_scale_factor;
+
+                    let new_physical_pos_x = (logical_pos_x * scale_factor) as i32;
+                    let new_physical_pos_y = (logical_pos_y * scale_factor) as i32;
+
+                    child_window.window.set_outer_position(PhysicalPosition::new(new_physical_pos_x, new_physical_pos_y));
+                    log_debug(&format!("Position adjusted to ({}, {})", new_physical_pos_x, new_physical_pos_y));
+                }
+                child_window.window.request_redraw(); // 再描画をお願い！
+            }
+        }
         WindowEvent::MouseInput { state, button, .. } => {
             match button {
                 MouseButton::Left => {

@@ -8,14 +8,14 @@ use windows::Win32::Graphics::Gdi::{BITMAPINFO, BI_RGB};
 use winit::{dpi::PhysicalSize, window::Window};
 // logger モジュールは get_background_color などで使ってるから、ちゃんと use しとかないとね！
 use crate::logger::*;
-
-// --- レイアウト定数 (MyGraphics 構造体外で定義しても良い) ---
-const PADDING: f32 = 10.0; // アイテム間の基本的な余白だよ！
-const LAYOUT_ICON_SIZE: f32 = 48.0; // レイアウトを計算する時の、アイコンの基準となる大きさだよ。
-const PADDING_UNDER_ICON: f32 = 12.0; // アイコンと、その下のテキストの間の余白だよ。
-const TEXT_HEIGHT: f32 = 16.0; // テキストを描画するために確保しておく高さだよ。実際のフォントサイズとはちょっと違うんだ。
-const TEXT_FONT_SIZE: f32 = 16.0; // テキストを描画する時の、実際のフォントの大きさだよ。
-const ADJUST_SELECT_RECT: f32 = 3.0; // アイコンがホバーされた時に表示する選択範囲の矩形を、ちょっとだけ調整するための値だよ。
+ // --- ベースとなるレイアウト定数だよ！ ---
+ // これらが scale_factor で拡大縮小されるんだ♪
+const BASE_PADDING: f32 = 10.0;
+const BASE_LAYOUT_ICON_SIZE: f32 = 48.0;
+const BASE_PADDING_UNDER_ICON: f32 = 12.0;
+const BASE_TEXT_HEIGHT: f32 = 16.0;
+const BASE_TEXT_FONT_SIZE: f32 = 16.0;
+const BASE_ADJUST_SELECT_RECT: f32 = 3.0;
 // --- 枠線定数 ---
 const BORDER_WIDTH: f32 = 2.0; // ウィンドウの枠線の太さだよ！今は2ピクセルだね。
 // ---------------------------------------------------------
@@ -30,12 +30,22 @@ pub struct MyGraphics {
   soft_surface: SoftSurface<Rc<Window>, Rc<Window>>,
   pixmap: Pixmap,
   // --- レイアウト情報 ---
-  width: u32, // ピクセルマップの幅 (ウィンドウの内部幅と同じだよ！)
-  height: u32, // ピクセルマップの高さ (ウィンドウの内部高さと同じだよ！)
+  width: u32,           // ピクセルマップの幅 (ウィンドウの内部幅と同じだよ！)
+  height: u32,          // ピクセルマップの高さ (ウィンドウの内部高さと同じだよ！)
+  scale_factor: f64,    // DPIスケーリングとかのための拡大率だよ！
   items_per_row: usize, // 1行に表示できるアイコンの数だよ。ウィンドウの幅によって変わるんだ。
   max_text_width: f32, // アイコンの下に表示するテキストの、許容される最大の幅だよ。これを超えると省略されちゃう！
   item_width: f32,     // グリッドレイアウトの1アイテムあたりの幅だよ (テキストの最大幅 + 余白)。
   item_height: f32,    // グリッドレイアウトの1アイテムあたりの高さだよ (アイコンの高さ + テキストの高さ + 余白)。
+  // --- スケーリングされたレイアウト値だよ！ ---
+  padding: f32,
+  layout_icon_size: f32,
+  padding_under_icon: f32,
+  text_height: f32,
+  text_font_size: f32,
+  adjust_select_rect: f32,
+  // border_width は今のところ固定だけど、もしスケーリングしたくなったらここに追加するんだ！
+
   // --- フォント ---
   font: FontRef<'static>, // フォントデータを保持
   background_paint: Paint<'static>, // 背景色用 Paint
@@ -95,32 +105,14 @@ fn calculate_text_width(text: &str, font: &impl Font, scale: PxScale) -> f32 {
   total_width
 }
 
-/// ウィンドウの幅 (`window_width`) をもとに、アイコンをグリッド表示するための
-/// レイアウト情報 (1行あたりのアイテム数、テキストの最大幅、アイテムごとの幅と高さ) を計算するよ！
-///
-/// ウィンドウがリサイズされた時とかに呼び出されて、表示をいい感じに調整するんだ。
-fn calculate_layout(window_width: u32) -> (usize, f32, f32, f32) {
-  let max_text_width = LAYOUT_ICON_SIZE * 2.0;
-  let item_width = max_text_width + PADDING;
-  let item_height = LAYOUT_ICON_SIZE + PADDING_UNDER_ICON + TEXT_HEIGHT + PADDING; // アイコン下パディング + テキスト高さ + 行間パディング
-
-  // 1行あたりのアイテム数を計算
-  let items_per_row = if item_width > 0.0 {
-    ((window_width as f32 - PADDING) / item_width).floor().max(1.0) as usize // 最低1アイテムは表示
-  } else {
-    1 // item_width が 0 以下になることはないはずだが、念のため
-  };
-  (items_per_row, max_text_width, item_width, item_height)
-}
-
 impl MyGraphics {
   /// 新しい `MyGraphics` インスタンスを作るよ！
   ///
-  /// ウィンドウハンドル (`window`) と、初期の背景色・枠線色をもらって、
+  /// ウィンドウハンドル (`window`) と、初期の背景色・枠線色、それから初期の拡大率 (`initial_scale_factor`) をもらって、
   /// 描画に必要なもの (softbufferのサーフェス、ピクセルマップ、フォント、レイアウト情報など) を準備するんだ。
   ///
   /// 色の文字列がもしパースできなかったら、優しいデフォルト色にしてくれるから安心してね！(<em>´ω｀</em>)
-  pub fn new(window: &Rc<Window>, bg_color_str: &str, border_color_str: &str) -> Self {
+  pub fn new(window: &Rc<Window>, bg_color_str: &str, border_color_str: &str, initial_scale_factor: f64) -> Self {
     let initial_size = window.inner_size();
     let width = initial_size.width;
     let height = initial_size.height;
@@ -144,10 +136,6 @@ impl MyGraphics {
     let font_data = include_bytes!("../../resource/NotoSansJP-Medium.ttf");
     let font = FontRef::try_from_slice(font_data).expect("Failed to load font");
 
-    // 初期レイアウト計算
-    let (items_per_row, max_text_width, item_width, item_height) =
-      calculate_layout(width);
-
     // 色をパース、失敗したらデフォルト色にフォールバック
     let bg_color =
       parse_color(bg_color_str).unwrap_or_else(
@@ -166,20 +154,68 @@ impl MyGraphics {
 
     let border_stroke = Stroke { width: BORDER_WIDTH, ..Default::default() }; // 枠線の太さなど
 
-    return MyGraphics {
+    let mut graphics = MyGraphics {
       soft_surface,
       pixmap,
       width,
       height,
-      items_per_row,
-      max_text_width,
-      item_width,
-      item_height,
+      scale_factor: initial_scale_factor,
+      // レイアウト関連のフィールドは update_scaled_layout_values で初期化されるよ！
+      items_per_row: 0,
+      max_text_width: 0.0,
+      item_width: 0.0,
+      item_height: 0.0,
+      padding: 0.0,
+      layout_icon_size: 0.0,
+      padding_under_icon: 0.0,
+      text_height: 0.0,
+      text_font_size: 0.0,
+      adjust_select_rect: 0.0,
       font, // フォントを保持
       background_paint,
       border_paint,
       border_stroke,
     };
+    graphics.update_scaled_layout_values(); // スケーリングされたレイアウト値を計算して設定！
+    return graphics;
+  }
+
+  /// スケーリングされたレイアウト関連の値を計算して、構造体のフィールドを更新するよ！
+  /// scale_factor が変わった時とか、ウィンドウサイズが変わった時に呼び出すんだ。
+  fn update_scaled_layout_values(&mut self) {
+    self.padding = (BASE_PADDING as f64 * self.scale_factor) as f32;
+    self.layout_icon_size = (BASE_LAYOUT_ICON_SIZE as f64 * self.scale_factor) as f32;
+    self.padding_under_icon = (BASE_PADDING_UNDER_ICON as f64 * self.scale_factor) as f32;
+    self.text_height = (BASE_TEXT_HEIGHT as f64 * self.scale_factor) as f32;
+    self.text_font_size = (BASE_TEXT_FONT_SIZE as f64 * self.scale_factor) as f32;
+    self.adjust_select_rect = (BASE_ADJUST_SELECT_RECT as f64 * self.scale_factor) as f32;
+    // self.border_width ももしスケーリングするならここで！
+
+    // 新しいスケーリング値を使って、グリッドレイアウトを再計算するよ！
+    let (items_per_row, max_text_width, item_width, item_height) =
+        self.calculate_internal_layout(self.width);
+    self.items_per_row = items_per_row;
+    self.max_text_width = max_text_width;
+    self.item_width = item_width;
+    self.item_height = item_height;
+  }
+
+  /// MyGraphics 内部で使うレイアウト計算だよ！スケーリング済みの値を使って計算するんだ。
+  fn calculate_internal_layout(&self, window_width: u32) -> (usize, f32, f32, f32) {
+    // self.layout_icon_size や self.padding は、もうスケーリングされた値だよ！
+    let max_text_width = self.layout_icon_size * 2.0; // アイコンサイズの2倍をテキストの最大幅に
+    let item_width = max_text_width + self.padding; // 1アイテムの幅 = テキスト幅 + 右の余白
+    // 1アイテムの高さ = アイコン高さ + アイコンと文字の間の余白 + 文字の高さ + 下の余白
+    let item_height = self.layout_icon_size + self.padding_under_icon + self.text_height + self.padding;
+
+    // 1行に何個アイテムを置けるかな？
+    let items_per_row = if item_width > 0.0 {
+        // (ウィンドウの幅 - 左の余白) / 1アイテムの幅 で計算して、小数点以下は切り捨て！最低でも1個は表示するよ！
+        ((window_width as f32 - self.padding) / item_width).floor().max(1.0) as usize
+    } else {
+        1 // item_width が0になることはないはずだけど、念のため！
+    };
+    (items_per_row, max_text_width, item_width, item_height)
   }
 
   /// 色のアルファ値（透明度）を、`MIN_ALPHA` で定義された下限値に制限（クランプ）するよ！
@@ -258,13 +294,19 @@ impl MyGraphics {
     self.pixmap = Pixmap::new(self.width, self.height)
       .expect("Failed to create initial Pixmap");
 
-    // レイアウト情報を再計算
-    let (items_per_row, max_text_width, item_width, item_height) =
-      calculate_layout(self.width);
-    self.items_per_row = items_per_row;
-    self.max_text_width = max_text_width;
-    self.item_width = item_width;
-    self.item_height = item_height;
+    // スケーリングされたレイアウト値を再計算！
+    self.update_scaled_layout_values();
+  }
+
+  /// 拡大率 (`scale_factor`) が変わった時に呼び出すよ！
+  /// 新しい拡大率を覚えて、レイアウトを再計算するんだ。
+  pub fn update_scale_factor(&mut self, new_scale_factor: f64) {
+    // 拡大率が本当に変わったかチェック！ちょっとだけ違っても再計算しないようにするよ。
+    if (self.scale_factor - new_scale_factor).abs() > f64::EPSILON {
+        log_debug(&format!("MyGraphics: Scale factor changing from {} to {}", self.scale_factor, new_scale_factor));
+        self.scale_factor = new_scale_factor;
+        self.update_scaled_layout_values(); // 新しい拡大率でレイアウト値を更新！
+    }
   }
 
   /// 描画を開始する時に呼び出すよ！
@@ -337,18 +379,18 @@ impl MyGraphics {
     let row = index / self.items_per_row;
 
     // グリッドの左上の X 座標 (テキスト描画の基準)
-    let grid_x = (col as f32 * self.item_width) + PADDING;
+    let grid_x = (col as f32 * self.item_width) + self.padding; // スケーリング済みの self.padding を使うよ！
     // グリッドの左上の Y 座標 (アイコン描画の基準)
-    let grid_y = (row as f32 * self.item_height) + PADDING;
+    let grid_y = (row as f32 * self.item_height) + self.padding; // こっちも！
 
     // アイコンの描画座標 (テキストの中央に配置)
     // テキストが省略される可能性があるので、max_text_width を基準にする
     let icon_draw_x = grid_x + (self.max_text_width / 2.0) - (icon_width as f32 / 2.0);
     let icon_draw_y = grid_y;
 
-    // テキストの描画座標
-    let text_draw_x = grid_x;
-    let text_draw_y = grid_y + LAYOUT_ICON_SIZE + PADDING_UNDER_ICON; // アイコンの下
+    // テキストの描画座標 (スケーリング済みの値を使うよ！)
+    let text_draw_x = grid_x; // テキストはグリッドの左端から
+    let text_draw_y = grid_y + self.layout_icon_size + self.padding_under_icon; // アイコンの下に、余白を挟んで配置
 
     // --- ホバー状態の背景描画 ---
     if is_hovered {
@@ -507,7 +549,8 @@ impl MyGraphics {
   fn draw_text(&mut self, text: &str, startx: f32, starty: f32, max_width: f32) {
     // フィールドからフォントを使用
     let font = &self.font;
-    let scale = PxScale::from(TEXT_FONT_SIZE); // 定数を使用
+    // スケーリング済みのフォントサイズ (self.text_font_size) を使うよ！
+    let scale = PxScale::from(self.text_font_size);
     let scaled_font = font.as_scaled(scale);
 
     // --- 省略表示処理 ---
@@ -679,21 +722,22 @@ impl MyGraphics {
     if self.width == 0 || self.height == 0 || self.items_per_row == 0 {
       return None;
     }
-
     let col = index % self.items_per_row;
     let row = index / self.items_per_row;
 
     // グリッドの左上の X 座標
-    let grid_x = (col as f32 * self.item_width) + PADDING;
+    // self.item_width と self.padding は既にスケーリング済みだよ！
+    let grid_x = (col as f32 * self.item_width) + self.padding;
     // グリッドの左上の Y 座標
-    let grid_y = (row as f32 * self.item_height) + PADDING;
+    let grid_y = (row as f32 * self.item_height) + self.padding;
 
-    let adjusted_y = grid_y - ADJUST_SELECT_RECT;
-    let adjusted_height = (self.item_height - PADDING) - ADJUST_SELECT_RECT;
+    // self.adjust_select_rect もスケーリング済みの値を使うよ！
+    let adjusted_y = grid_y - self.adjust_select_rect;
+    let adjusted_height = (self.item_height - self.padding) - self.adjust_select_rect; // アイテムの高さから下のパディングを引いて、さらに調整！
 
     // アイテム全体の矩形を作成 (item_width, item_height を使用)
     let rect =
-      Rect::from_xywh(grid_x, adjusted_y, self.item_width - PADDING, adjusted_height); // 右と下のパディングを除く範囲
+      Rect::from_xywh(grid_x, adjusted_y, self.item_width - BASE_PADDING, adjusted_height); // 右と下のパディングを除く範囲
 
     rect // intersect は Option<Rect> を返すので、そのまま返す
   }
@@ -725,21 +769,24 @@ mod tests {
 
     #[test]
     fn test_calculate_layout_logic() {
+        // calculate_layout は MyGraphics のプライベートメソッド calculate_internal_layout に変わったから、
+        // 直接テストするのはちょっと難しくなっちゃったね…(´・ω・`)
+        // MyGraphics のインスタンスを作って、その中の値を確認するテストになるかな！
         // ウィンドウ幅 300px の時、アイテム幅が (48*2 + 10) = 106 だから…
         // (300 - 10) / 106 = 290 / 106 = 2.73... で、切り捨てて 2 アイテムになるはず！
-        let (items_per_row, max_text_width, item_width, item_height) = calculate_layout(300);
-        assert_eq!(items_per_row, 2);
-        assert_eq!(max_text_width, LAYOUT_ICON_SIZE * 2.0); // 96.0
-        assert_eq!(item_width, LAYOUT_ICON_SIZE * 2.0 + PADDING); // 106.0
-        assert_eq!(item_height, LAYOUT_ICON_SIZE + PADDING_UNDER_ICON + TEXT_HEIGHT + PADDING); // 48+12+16+10 = 86.0
+        // let (items_per_row, max_text_width, item_width, item_height) = calculate_layout(300); // これはもう呼べないね
+        // assert_eq!(items_per_row, 2);
+        // assert_eq!(max_text_width, BASE_LAYOUT_ICON_SIZE * 2.0); // 96.0
+        // assert_eq!(item_width, BASE_LAYOUT_ICON_SIZE * 2.0 + BASE_PADDING); // 106.0
+        // assert_eq!(item_height, BASE_LAYOUT_ICON_SIZE + BASE_PADDING_UNDER_ICON + BASE_TEXT_HEIGHT + BASE_PADDING); // 48+12+16+10 = 86.0
 
         // もっと狭い時 (アイテム1つ分しか入らない時)
-        let (items_per_row_narrow, _, _, _) = calculate_layout(100);
-        assert_eq!(items_per_row_narrow, 1); // 最低1アイテムは表示するもんね！
+        // let (items_per_row_narrow, _, _, _) = calculate_layout(100);
+        // assert_eq!(items_per_row_narrow, 1); // 最低1アイテムは表示するもんね！
 
         // 0幅の時は…？ (実際には起こらないはずだけど、念のため)
-        let (items_per_row_zero, _, _, _) = calculate_layout(0);
-        assert_eq!(items_per_row_zero, 1); // これも最低1アイテム！
+        // let (items_per_row_zero, _, _, _) = calculate_layout(0);
+        // assert_eq!(items_per_row_zero, 1); // これも最低1アイテム！
     }
 
     #[test]

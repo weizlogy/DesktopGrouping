@@ -30,6 +30,8 @@ pub struct ChildWindow {
   /// このウィンドウインスタンスを紐付けるためのユニークな文字列ID。
   /// 通常は生成時のタイムスタンプ。
   pub id_str: String,
+  /// このウィンドウの現在のDPIスケーリングファクターだよ！
+  pub scale_factor: f64,
 }
 
 impl ChildWindow {
@@ -45,13 +47,23 @@ impl ChildWindow {
   /// * `bg_color_str` - 背景色の初期値を文字列で指定してね (例: `"#RRGGBBAA"`)。
   /// * `border_color_str` - 枠線色の初期値を文字列で指定してね (例: `"#RRGGBBAA"`)。
   pub fn new(window: Rc<Window>, id_str: String, bg_color_str: &str, border_color_str: &str) -> ChildWindow {
-    let graphics = MyGraphics::new(&window, bg_color_str, border_color_str);
+    // ウィンドウが作られた時の最初の拡大率を覚えておくよ！
+    let initial_scale_factor = window.scale_factor();
+    // MyGraphics ちゃんにも最初の拡大率を教えてあげるんだ♪
+    let graphics = MyGraphics::new(&window, bg_color_str, border_color_str, initial_scale_factor);
     ChildWindow {
       window,
       graphics,
       groups: Vec::new(),
       id_str,
+      scale_factor: initial_scale_factor,
     }
+  }
+
+  /// 拡大率 (`scale_factor`) が変わった時に呼び出すよ！
+  pub fn update_scale_factor(&mut self, new_scale_factor: f64) {
+    self.scale_factor = new_scale_factor;
+    self.graphics.update_scale_factor(new_scale_factor); // MyGraphics にも拡大率の変更を伝えるよ！
   }
 
   /// 背景色を設定するよ！

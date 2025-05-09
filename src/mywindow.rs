@@ -107,6 +107,11 @@ impl WindowManager {
     self.children.get(id).map(|cw| &*cw.window) // Rc<Window> から &Window を取得
   }
 
+  /// 指定された `WindowId` に対応する `ChildWindow` への可変参照を取得します。
+  pub fn get_child_window_mut(&mut self, id: &WindowId) -> Option<&mut ChildWindow> {
+    self.children.get_mut(id)
+  }
+
   /// 管理対象の子ウィンドウを追加します。
   /// 新しい子ウィンドウちゃんが仲間入りする時に呼ばれるよ！
   /// `Window` オブジェクトと、その子の名前 (id_str)、それから初期設定をもらって、
