@@ -15,6 +15,9 @@ use crate::{
 /// ダブルクリックと判定する時間閾値 (ミリ秒)
 const DOUBLE_CLICK_THRESHOLD_MS: u64 = 500;
 
+/// アイコン実行時エフェクトの表示時間 (ミリ秒)
+const EXECUTION_EFFECT_DURATION_MS: u64 = 200;
+
 /// アプリケーション内で発生するカスタムイベント。
 /// 今はトレイアイコンのメニューから送られてくるイベントだけだよ！
 #[derive(Debug)]
@@ -37,6 +40,8 @@ pub struct WindowManager {
   pub is_resizing: WindowControl,
   /// 現在マウスカーソルがホバーしているアイコンの情報。(ウィンドウID, アイコンインデックス)
   pub hovered_icon: Option<(WindowId, usize)>,
+  /// 現在実行エフェクトを表示中のアイコンの情報。(ウィンドウID, アイコンインデックス, 開始時刻)
+  executing_icon: Option<(WindowId, usize, Instant)>,
   /// ダブルクリック判定用の最後にクリックされた時刻とウィンドウID。
   last_click: Option<(WindowId, Instant)>,
   /// 各ウィンドウちゃんの中で、最後にマウスカーソルがいた場所を覚えておくよ！アイコンの場所を特定するのに使うんだ。
@@ -87,6 +92,7 @@ impl WindowManager {
       is_moving: WindowControl::new(), // 移動状態を初期化
       is_resizing: WindowControl::new(), // リサイズ状態を初期化
       hovered_icon: None,       // 最初はホバーされているアイコンはない
+      executing_icon: None,     // 実行エフェクトも最初はなし
       last_click: None,         // ダブルクリック判定情報を初期化
       last_cursor_pos: HashMap::new(), // カーソル位置マップを空で初期化
       clipboard,
@@ -389,23 +395,41 @@ impl WindowManager {
   /// その子ウィンドウちゃんに「お絵かきお願いね！」って伝えて、
   /// マウスカーソルがアイコンの上にあったら、それも教えてあげるんだ。
   pub fn draw_window(&mut self, id: &WindowId) {
-    // 管理している子ウィンドウがない場合は何もしない
     if self.children.is_empty() {
       return;
     }
 
-    // 描画対象の子ウィンドウ (可変参照) を取得
-    let child = self.children.get_mut(id)
-      .expect("描画対象の子ウィンドウ取得に失敗");
+    // 実行中エフェクトが時間切れになっていたら、状態をリセットして再描画を要求するよ！
+    let mut needs_redraw_after_effect = false;
+    if let Some((win_id, _, start_time)) = self.executing_icon {
+      if win_id == *id && start_time.elapsed() > Duration::from_millis(EXECUTION_EFFECT_DURATION_MS) {
+        self.executing_icon = None;
+        needs_redraw_after_effect = true;
+      }
+    }
 
-    // このウィンドウ上でホバーされているアイコンのインデックスを取得
+    // 実行中エフェクトの対象アイコンインデックスを取得
+    let executing_index = self.executing_icon.and_then(|(exec_id, exec_idx, _)| {
+      if exec_id == *id { Some(exec_idx) } else { None }
+    });
+
+    // 描画対象の子ウィンドウ（可変参照）を取得
+    let child = self.children.get_mut(id).expect("描画対象の子ウィンドウ取得に失敗");
+
+    // このウィンドウ上でホバーされているアイコンのインデックスを取得するよ
     let hovered_index =
       self.hovered_icon.and_then(|(hover_id, hover_idx)| {
         // hovered_icon のウィンドウIDが、描画対象のウィンドウIDと一致する場合のみ Some(インデックス) を返す
         if hover_id == *id { Some(hover_idx) } else { None }
     });
-    // ChildWindow の draw メソッドを呼び出し、ホバーインデックスを渡す
-    child.draw(hovered_index);
+
+    // ChildWindow の draw メソッドを呼び出して、ホバーと実行中の情報を渡すんだ
+    child.draw(hovered_index, executing_index);
+
+    // エフェクトが終わった直後なら、消えた状態を反映するために再描画をお願いするよ
+    if needs_redraw_after_effect {
+      child.window.request_redraw();
+    }
   }
 
   /// 指定されたIDのウィンドウのサイズが変更されたときに呼び出されます。
@@ -456,7 +480,7 @@ impl WindowManager {
   /// ダブルクリックされたかどうかをチェックして、もしダブルクリックだったら、その場所にあるアイコンを実行するよ！
   pub fn execute_group_item(&mut self, window_id: WindowId) {
     let now = Instant::now(); // 現在時刻を取得
-    let mut is_double_click = false; // ダブルクリックフラグ
+    let is_double_click; // ダブルクリックフラグ
 
     // 前回のクリック情報を確認
     if let Some((last_id, last_time)) = self.last_click {
@@ -467,10 +491,12 @@ impl WindowManager {
         self.last_click = None; // ダブルクリックが成立したのでリセット
       } else {
         // シングルクリック (または閾値超過) なので、今回のクリック情報を保存
+        is_double_click = false;
         self.last_click = Some((window_id, now));
       }
     } else {
       // 初めてのクリックなので、今回のクリック情報を保存
+      is_double_click = false;
       self.last_click = Some((window_id, now));
     }
 
@@ -479,8 +505,7 @@ impl WindowManager {
       return;
     }
 
-    // ダブルクリックの場合、クリックされた位置のアイコンを探す
-    // 記録されている最後のカーソル位置を取得
+    // ダブルクリックの場合のみ、ここから先の処理に進むよ！
     if let Some(cursor_pos) = self.last_cursor_pos.get(&window_id).cloned() {
       // カーソル位置にあるアイコンのインデックスを検索
       if let Some((_icon_win_id, icon_index)) = self.find_icon_at_relative_pos(window_id, cursor_pos) {
@@ -488,6 +513,10 @@ impl WindowManager {
         if let Some(child) = self.children.get(&window_id) {
            // インデックスが有効範囲内か確認 (念のため)
            if icon_index < child.groups.len() {
+               // エフェクト開始！実行中のアイコンとして記録して、再描画をお願いするよ！
+               self.executing_icon = Some((window_id, icon_index, Instant::now()));
+               child.window.request_redraw();
+
                // IconInfo の execute メソッドを呼び出してファイル/フォルダを開く
                child.groups[icon_index].execute();
            } else {

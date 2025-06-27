@@ -131,13 +131,14 @@ impl ChildWindow {
   /// 持ってるアイコン (`groups`) を一つずつ `graphics.draw_group()` で描いてもらうんだ。
   /// もし `hovered_index` が指定されてたら、そのアイコンはちょっと目立つように描かれるかも！
   /// 最後に `graphics.draw_finish()` で画面に表示するよ！
-  pub fn draw(&mut self, hovered_index: Option<usize>) {
+  pub fn draw(&mut self, hovered_index: Option<usize>, executing_index: Option<usize>) {
     self.graphics.draw_start();
     let mut index = 0;
     self.groups.iter().for_each(|icon_info| {
       let is_hovered = hovered_index.map_or(false, |h_idx| h_idx == index);
+      let is_executing = executing_index.map_or(false, |e_idx| e_idx == index);
       // icon_info.name は String だから、clone() しなくても参照で渡せるね！
-      self.graphics.draw_group(index, &icon_info.name, &icon_info.icon, is_hovered);
+      self.graphics.draw_group(index, &icon_info.name, &icon_info.icon, is_hovered, is_executing);
       index += 1;
     });
     self.graphics.draw_finish();

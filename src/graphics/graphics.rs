@@ -363,7 +363,8 @@ impl MyGraphics {
     index: usize,
     icon_name: &String,
     icon_data: &(BITMAPINFO, Vec<u8>),
-    is_hovered: bool) {
+    is_hovered: bool,
+    is_executing: bool) {
 
     let header = &icon_data.0.bmiHeader;
     // アイコンサイズは取得したものを尊重するが、レイアウト基準は 48 とする
@@ -392,27 +393,34 @@ impl MyGraphics {
     let text_draw_x = grid_x; // テキストはグリッドの左端から
     let text_draw_y = grid_y + self.layout_icon_size + self.padding_under_icon; // アイコンの下に、余白を挟んで配置
 
-    // --- ホバー状態の背景描画 ---
+    // --- ホバー状態なら背景を塗るよ ---
     if is_hovered {
       if let Some(rect) = self.get_item_rect_f32(index) { // f32 版の矩形取得を使用
-        // 1. 背景塗りつぶし (明るい青 - Azur 半透明)
         let mut fill_paint = Paint::default();
         fill_paint.set_color_rgba8(0xF0, 0xFF, 0xFF, 0x40); // Azur
         fill_paint.anti_alias = true; // アンチエイリアス有効
         self.pixmap.fill_rect(rect, &fill_paint, Transform::identity(), None);
+      }
+    }
 
-        // 2. 枠線描画 (濃い青 - SteelBlue 不透明)
+    // --- 実行中かホバー中かで枠線を描き分けるよ ---
+    if is_executing {
+      if let Some(rect) = self.get_item_rect_f32(index) {
+        // 実行中エフェクト (Gold の太い枠線)
+        let mut exec_paint = Paint::default();
+        exec_paint.set_color_rgba8(0xFF, 0xD7, 0x00, 0xCC); // Gold
+        exec_paint.anti_alias = true;
+        let exec_stroke = Stroke { width: BORDER_WIDTH * 1.5, ..Default::default() };
+        self.pixmap.stroke_path(
+          &PathBuilder::from_rect(rect), &exec_paint, &exec_stroke, Transform::identity(), None);
+      }
+    } else if is_hovered {
+      if let Some(rect) = self.get_item_rect_f32(index) {
+        // ホバーエフェクト (SteelBlue の枠線)
         let mut stroke_paint = Paint::default();
         stroke_paint.set_color_rgba8(0x46, 0x82, 0xB4, 0x80); // SteelBlue
-        stroke_paint.anti_alias = true; // アンチエイリアス有効
-
-        // 枠線の設定
-        let stroke = Stroke {
-          width: BORDER_WIDTH,
-          ..Default::default() // 他のプロパティはデフォルト値
-        };
-
-        // 矩形からパスを作成して枠線を描画
+        stroke_paint.anti_alias = true;
+        let stroke = Stroke { width: BORDER_WIDTH, ..Default::default() };
         self.pixmap.stroke_path(
           &PathBuilder::from_rect(rect), &stroke_paint, &stroke, Transform::identity(), None);
       }
