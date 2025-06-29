@@ -6,7 +6,7 @@ use tiny_skia::Color;
 use winit::{window::{Window, ResizeDirection}, dpi::PhysicalSize};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use desktop_grouping::graphics::graphics::{parse_color, MyGraphics};
+use desktop_grouping::graphics::{self, graphics::MyGraphics};
 // logger モジュールは start_os_drag などで使ってるから、ちゃんと use しとかないとね！
 use crate::{
   file_drag::IconInfo, logger::*,
@@ -72,7 +72,7 @@ impl ChildWindow {
   /// それに合わせて、枠線の色もいい感じに自動計算して更新するよ！
   /// 最後に、ウィンドウに「再描画お願いね！」って伝えるんだ♪
   pub fn set_background_color(&mut self, color_str: &str) {
-    if let Some(bg_color) = parse_color(color_str) {
+    if let Some(bg_color) = graphics::parse_color(color_str) {
       self.graphics.update_background_color(bg_color);
       let border_color = calculate_border_color(bg_color, &self.id_str);
       self.graphics.update_border_color(border_color);
