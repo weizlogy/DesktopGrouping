@@ -1,10 +1,9 @@
 use std::{num::NonZeroU32, rc::Rc};
 
-use ab_glyph::{FontRef, PxScale};
+use ab_glyph::{FontRef};
 use softbuffer::{Context, Surface as SoftSurface};
 use tiny_skia::{
-    Color, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, PremultipliedColorU8,
-    Rect, Shader, SpreadMode, Stroke, Transform,
+    Color, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, Rect, Shader, SpreadMode, Stroke, Transform,
 };
 use windows::Win32::Graphics::Gdi::BITMAPINFO;
 use winit::{dpi::PhysicalSize, window::Window};
@@ -339,10 +338,12 @@ impl MyGraphics {
         // --- ホバー状態なら背景を塗るよ ---
         if is_hovered {
             if let Some(rect) = self.get_item_rect_f32(index) {
-                // f32 版の矩形取得を使用
+                let base_bg_color = self.get_background_color(); // ウィンドウの現在の背景色を取得
+                let hover_fill_color = colors::calculate_hover_fill_color(base_bg_color);
+
                 let mut fill_paint = Paint::default();
-                fill_paint.set_color_rgba8(0xF0, 0xFF, 0xFF, 0x40); // Azur
-                fill_paint.anti_alias = true; // アンチエイリアス有効
+                fill_paint.set_color(hover_fill_color);
+                fill_paint.anti_alias = true;
                 self.pixmap
                     .fill_rect(rect, &fill_paint, Transform::identity(), None);
             }
@@ -369,9 +370,11 @@ impl MyGraphics {
             }
         } else if is_hovered {
             if let Some(rect) = self.get_item_rect_f32(index) {
-                // ホバーエフェクト (SteelBlue の枠線)
+                let base_bg_color = self.get_background_color(); // ウィンドウの現在の背景色を取得
+                let hover_border_color = colors::calculate_hover_border_color(base_bg_color);
+
                 let mut stroke_paint = Paint::default();
-                stroke_paint.set_color_rgba8(0x46, 0x82, 0xB4, 0x80); // SteelBlue
+                stroke_paint.set_color(hover_border_color);
                 stroke_paint.anti_alias = true;
                 let stroke = Stroke {
                     width: BORDER_WIDTH,
@@ -407,6 +410,7 @@ impl MyGraphics {
             text_draw_x,
             text_draw_y,
             self.max_text_width,
+            self.text_height, // text_height を追加するよ！
         );
     }
 

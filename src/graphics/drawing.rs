@@ -1,14 +1,10 @@
 use ab_glyph::{point, Font, FontRef, GlyphId, PxScale, ScaleFont};
 use tiny_skia::{
-    Color, Paint, Pixmap, PixmapPaint, PremultipliedColorU8, Rect, Shader,
-    Stroke, Transform,
+    Color, Paint, Pixmap, PixmapPaint, PremultipliedColorU8, Rect, Transform,
 };
 use windows::Win32::Graphics::Gdi::{BITMAPINFO, BI_RGB};
 
 use super::layout::calculate_text_width;
-
-const SHADOW_OFFSET: f32 = 2.0;
-const SHADOW_BLUR_RADIUS: f32 = 2.0;
 
 /// アイコンの描画に失敗しちゃった時に、代わりに表示するプレースホルダー（仮の印）を描画するよ！
 fn draw_placeholder_icon(pixmap: &mut Pixmap, x: u32, y: u32, width: u32, height: u32) {
@@ -87,20 +83,6 @@ pub fn draw_icon(pixmap: &mut Pixmap, icon_info: &BITMAPINFO, pixel_data: &[u8],
       }
     }
 
-    // --- ドロップシャドウの描画 --- (一旦コメントアウト)
-    // if let Some(mut mask) = Mask::from_pixmap(icon_pixmap.as_ref(), None) {
-    //     mask.blur(SHADOW_BLUR_RADIUS, None);
-    //     let mut shadow_paint = Paint::default();
-    //     shadow_paint.set_color_rgba8(0, 0, 0, 100); // 半透明の黒
-    //     shadow_paint.anti_alias = true;
-    //     pixmap.fill_mask(
-    //         &mask,
-    //         &shadow_paint,
-    //         Transform::from_translate(x as f32 + SHADOW_OFFSET, y as f32 + SHADOW_OFFSET),
-    //     );
-    // }
-
-
     // --- アイコン本体の描画 ---
     let mut paint = PixmapPaint::default();
     paint.quality = tiny_skia::FilterQuality::Bicubic;
@@ -116,6 +98,7 @@ pub fn draw_text(
     startx: f32,
     starty: f32,
     max_width: f32,
+    text_height: f32, // ここに text_height を追加するよ！
 ) {
     let scale = PxScale::from(text_font_size);
     let scaled_font = font.as_scaled(scale);
@@ -187,14 +170,15 @@ pub fn draw_text(
             caret.x += scaled_font.h_advance(font.glyph_id(c));
         }
     };
-    
-    // 1. シャドウを描画 (元のコードに戻す)
-    // let shadow_color = Color::from_rgba(0.0, 0.0, 0.0, 0.4).unwrap();
-    // let shadow_pos = point(adjusted_start_x + SHADOW_OFFSET, starty + SHADOW_OFFSET);
-    // draw_text_inner(pixmap, &text_to_draw, shadow_pos, shadow_color);
 
     // 2. テキスト本体を描画
     let text_color = Color::from_rgba(0.0, 0.0, 0.0, 1.0).unwrap();
-    let text_pos = point(adjusted_start_x, starty);
+    // テキスト描画エリア (starty から text_height の範囲) の垂直方向中央にテキストのベースラインが来るように調整
+    // scaled_font.ascent() はベースラインから文字の上端までの距離
+    // scaled_font.descent() はベースラインから文字の下端までの距離 (負の値)
+    // フォントの実際の高さは ascent - descent
+    let text_pos_y = starty + (text_height / 2.0) - (scaled_font.ascent() + scaled_font.descent()) / 2.0;
+    
+    let text_pos = point(adjusted_start_x, text_pos_y);
     draw_text_inner(pixmap, &text_to_draw, text_pos, text_color);
 }
