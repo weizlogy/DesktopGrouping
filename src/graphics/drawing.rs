@@ -90,6 +90,11 @@ pub fn draw_icon(pixmap: &mut Pixmap, icon_info: &BITMAPINFO, pixel_data: &[u8],
 }
 
 /// 指定されたテキストを、いい感じに中央揃えして、ピクセルマップに描画するよ！
+///
+/// `text` を `startx`, `starty` の位置を基準にして、`max_width` を超えないように描画するんだ。
+/// もしテキストが長すぎて `max_width` に収まらなかったら、賢く「...」って省略してくれるよ！
+/// `ab_glyph` を使って、フォントから文字の形（グリフ）を一つ一つ取り出して、それをピクセルマップに描き込んでいくんだ。
+/// ちょっと複雑だけど、これで綺麗な文字が表示できるんだね！(<em>´ω｀</em>)
 pub fn draw_text(
     pixmap: &mut Pixmap,
     font: &FontRef<'static>,
@@ -98,11 +103,12 @@ pub fn draw_text(
     startx: f32,
     starty: f32,
     max_width: f32,
-    text_height: f32, // ここに text_height を追加するよ！
+    text_height: f32, // text_height は今のところ使わないけど、将来のために残しておくよ！
 ) {
     let scale = PxScale::from(text_font_size);
     let scaled_font = font.as_scaled(scale);
 
+    // --- 省略表示処理 ---
     let ellipsis = "...";
     let ellipsis_width = calculate_text_width(ellipsis, font, scale);
     let mut text_to_draw = text.to_string();
@@ -134,51 +140,80 @@ pub fn draw_text(
         final_text_width = calculate_text_width(&text_to_draw, font, scale);
     }
 
+    // --- 描画開始位置の中央揃え計算 ---
     let center_x = startx + max_width / 2.0;
     let adjusted_start_x = center_x - final_text_width / 2.0;
-
-    let draw_text_inner = |target_pixmap: &mut Pixmap, text_to_draw: &str, pos: ab_glyph::Point, color: Color| {
-        let mut caret = pos;
-        let mut paint = Paint::default();
-        paint.shader = tiny_skia::Shader::SolidColor(color);
-        paint.anti_alias = true;
-
-        for c in text_to_draw.chars() {
-            let glyph = font.glyph_id(c).with_scale(scale);
-            if let Some(outline) = font.outline_glyph(glyph) {
-                outline.draw(|x, y, cov| {
-                    let mut target_pixmap_mut = target_pixmap.as_mut(); // PixmapMut を取得
-                    let idx = (caret.y as u32 + y) * target_pixmap_mut.width() + (caret.x as u32 + x); // インデックス計算
-                    if idx < target_pixmap_mut.pixels_mut().len() as u32 {
-                        let px = &mut target_pixmap_mut.pixels_mut()[idx as usize]; // 直接インデックスアクセス
-                        let current_alpha = px.alpha();
-                        let new_alpha = (cov * color.alpha() * 255.0) as u8;
-                        
-                        let blended_r = px.red() as f32 * (1.0 - cov) + color.red() * cov * 255.0;
-                        let blended_g = px.green() as f32 * (1.0 - cov) + color.green() * cov * 255.0;
-                        let blended_b = px.blue() as f32 * (1.0 - cov) + color.blue() * cov * 255.0;
-
-                        *px = PremultipliedColorU8::from_rgba(
-                            blended_r.min(255.0) as u8,
-                            blended_g.min(255.0) as u8,
-                            blended_b.min(255.0) as u8,
-                            (current_alpha as f32 + new_alpha as f32 * (1.0 - current_alpha as f32 / 255.0)).min(255.0) as u8,
-                        ).unwrap_or(*px);
-                    }
-                });
-            }
-            caret.x += scaled_font.h_advance(font.glyph_id(c));
-        }
-    };
-
-    // 2. テキスト本体を描画
-    let text_color = Color::from_rgba(0.0, 0.0, 0.0, 1.0).unwrap();
-    // テキスト描画エリア (starty から text_height の範囲) の垂直方向中央にテキストのベースラインが来るように調整
-    // scaled_font.ascent() はベースラインから文字の上端までの距離
-    // scaled_font.descent() はベースラインから文字の下端までの距離 (負の値)
-    // フォントの実際の高さは ascent - descent
-    let text_pos_y = starty + (text_height / 2.0) - (scaled_font.ascent() + scaled_font.descent()) / 2.0;
     
-    let text_pos = point(adjusted_start_x, text_pos_y);
-    draw_text_inner(pixmap, &text_to_draw, text_pos, text_color);
+    // --- 垂直位置の計算 ---
+    // starty をベースラインとして扱うよ。
+    // ascent() はベースラインから文字の上端までの距離。これを加えることで、文字の上端がだいたい starty に揃うようになるんだ。
+    let baseline_y = starty + scaled_font.ascent();
+
+    // --- 描画ループ ---
+    let mut caret = point(adjusted_start_x, baseline_y);
+    let mut last_glyph_id: Option<GlyphId> = None;
+
+    for c in text_to_draw.chars() {
+        let glyph_id = font.glyph_id(c);
+        let glyph = glyph_id.with_scale(scale);
+
+        // カーニングを適用
+        if let Some(last_id) = last_glyph_id {
+            caret.x += scaled_font.kern(last_id, glyph_id);
+        }
+
+        // グリフのアウトラインを取得
+        if let Some(outline) = font.outline_glyph(glyph) {
+            let bounds = outline.px_bounds();
+            if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+                caret.x += scaled_font.h_advance(glyph_id);
+                last_glyph_id = Some(glyph_id);
+                continue;
+            }
+
+            let glyph_width = bounds.width().ceil() as u32;
+            let glyph_height = bounds.height().ceil() as u32;
+            if glyph_width == 0 || glyph_height == 0 {
+                caret.x += scaled_font.h_advance(glyph_id);
+                last_glyph_id = Some(glyph_id);
+                continue;
+            }
+
+            // グリフ用の一時的な Pixmap を作成 (初期状態は透明)
+            let mut glyph_pixmap = match Pixmap::new(glyph_width, glyph_height) {
+                Some(pm) => pm,
+                None => { // 作成失敗
+                    caret.x += scaled_font.h_advance(glyph_id);
+                    last_glyph_id = Some(glyph_id);
+                    continue;
+                }
+            };
+            
+            // グリフのアウトラインを一時的な Pixmap に描画 (黒テキスト、アルファ適用)
+            outline.draw(|dx, dy, coverage| {
+                if coverage > 0.0 {
+                    let alpha = (coverage * 255.0).min(255.0) as u8;
+                    let index = dy * glyph_width + dx;
+                    if let Some(color) = PremultipliedColorU8::from_rgba(0, 0, 0, alpha) {
+                        if let Some(pixel) = glyph_pixmap.pixels_mut().get_mut(index as usize) {
+                            *pixel = color;
+                        }
+                    }
+                }
+            });
+
+            // 一時的なグリフ Pixmap をメインの Pixmap に描画
+            pixmap.draw_pixmap(
+                (caret.x + bounds.min.x) as i32,
+                (caret.y + bounds.min.y) as i32,
+                glyph_pixmap.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
+        }
+        
+        caret.x += scaled_font.h_advance(glyph_id);
+        last_glyph_id = Some(glyph_id);
+    }
 }

@@ -1,10 +1,13 @@
-use winit::{
-  dpi::{PhysicalPosition, PhysicalSize},
-  event_loop::EventLoopWindowTarget,
-  platform::windows::WindowBuilderExtWindows,
-  window::{Window, WindowBuilder},
+use windows::{
+    Win32::UI::WindowsAndMessaging::{IDYES, MB_ICONWARNING, MB_YESNO, MessageBoxW},
+    core::HSTRING,
 };
-use windows::{core::HSTRING, Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONWARNING, MB_YESNO}};
+use winit::{
+    dpi::{PhysicalPosition, PhysicalSize},
+    event_loop::EventLoopWindowTarget,
+    platform::windows::WindowBuilderExtWindows,
+    window::{Window, WindowBuilder},
+};
 
 use crate::{mywindow::UserEvent, settings::ChildSettings};
 
@@ -18,14 +21,14 @@ use crate::{mywindow::UserEvent, settings::ChildSettings};
 /// # 戻り値
 /// 作成された `winit::window::Window` インスタンス。
 pub fn create_main_window(event_loop: &winit::event_loop::EventLoop<UserEvent>) -> Window {
-  let window = WindowBuilder::new()
-    .with_visible(false) // 表示しない
-    .with_active(false)  // アクティブにしない
-    .with_title("Desktop Grouping (Main)") // 識別用のタイトル (任意)
-    .build(event_loop)
-    .expect("メインウィンドウの作成に失敗しました");
+    let window = WindowBuilder::new()
+        .with_visible(false) // 表示しない
+        .with_active(false) // アクティブにしない
+        .with_title("Desktop Grouping (Main)") // 識別用のタイトル (任意)
+        .build(event_loop)
+        .expect("メインウィンドウの作成に失敗しました");
 
-  return window;
+    return window;
 }
 
 /// 新しい子ウィンドウを作成します。
@@ -40,40 +43,40 @@ pub fn create_main_window(event_loop: &winit::event_loop::EventLoop<UserEvent>) 
 /// # 戻り値
 /// 作成された `winit::window::Window` インスタンス。
 pub fn create_child_window(
-  event_loop_target: &EventLoopWindowTarget<UserEvent>,
-  settings: Option<&ChildSettings>,
+    event_loop_target: &EventLoopWindowTarget<UserEvent>,
+    settings: Option<&ChildSettings>,
 ) -> Window {
-  let mut builder = WindowBuilder::new()
-    .with_title("Desktop Grouping")
-    .with_visible(true)
-    .with_active(false)
-    .with_skip_taskbar(true)
-    .with_resizable(true)
-    .with_transparent(true)
-    .with_decorations(false);
+    let mut builder = WindowBuilder::new()
+        .with_title("Desktop Grouping")
+        .with_visible(true)
+        .with_active(false)
+        .with_skip_taskbar(true)
+        .with_resizable(true)
+        .with_transparent(true)
+        .with_decorations(false);
 
-  if let Some(s) = settings {
-    builder = builder
-      .with_position(PhysicalPosition::new(s.x, s.y))
-      .with_inner_size(PhysicalSize::new(s.width, s.height));
-  } else {
-    let default_settings = ChildSettings::default();
-    builder = builder
-      .with_position(PhysicalPosition::new(
-        default_settings.x,
-        default_settings.y,
-      ))
-      .with_inner_size(PhysicalSize::new(
-        default_settings.width,
-        default_settings.height,
-      ));
-  }
+    if let Some(s) = settings {
+        builder = builder
+            .with_position(PhysicalPosition::new(s.x, s.y))
+            .with_inner_size(PhysicalSize::new(s.width, s.height));
+    } else {
+        let default_settings = ChildSettings::default();
+        builder = builder
+            .with_position(PhysicalPosition::new(
+                default_settings.x,
+                default_settings.y,
+            ))
+            .with_inner_size(PhysicalSize::new(
+                default_settings.width,
+                default_settings.height,
+            ));
+    }
 
-  let window = builder
-    .build(event_loop_target)
-    .expect("子ウィンドウの作成に失敗しました");
+    let window = builder
+        .build(event_loop_target)
+        .expect("子ウィンドウの作成に失敗しました");
 
-  return window;
+    return window;
 }
 
 /// ウィンドウ削除の確認ダイアログを表示する関数。
@@ -82,17 +85,16 @@ pub fn create_child_window(
 /// # 戻り値
 /// ユーザーが「はい」(IDYES) を選んだら `true` を、それ以外なら `false` を返すよ。
 pub fn show_confirmation_dialog() -> bool {
-  let title = HSTRING::from("確認");
-  let message = HSTRING::from("このグループウィンドウを削除しますか？\n(この操作は元に戻せません)");
+    let title = HSTRING::from("確認");
+    let message =
+        HSTRING::from("このグループウィンドウを削除しますか？\n(この操作は元に戻せません)");
 
-  let result = unsafe {
-    // Windows API を直接呼び出すから unsafe ブロックが必要なんだ。
-    // ちょっとドキドキするけど、ちゃんと使えば大丈夫！(๑•̀ㅂ•́)و✧
-    MessageBoxW(
-      None, &message, &title, MB_YESNO | MB_ICONWARNING,
-    )
-  };
-  result == IDYES
+    let result = unsafe {
+        // Windows API を直接呼び出すから unsafe ブロックが必要なんだ。
+        // ちょっとドキドキするけど、ちゃんと使えば大丈夫！(๑•̀ㅂ•́)و✧
+        MessageBoxW(None, &message, &title, MB_YESNO | MB_ICONWARNING)
+    };
+    result == IDYES
 }
 
 #[cfg(test)]

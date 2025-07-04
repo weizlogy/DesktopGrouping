@@ -11,29 +11,24 @@ const MIN_ALPHA: f32 = 0.05; // 色のアルファ値（透明度）が、これ
 /// '#' があってもなくても大丈夫！6桁だったらアルファ値は不透明 (FF) になるよ。
 /// もし変換できなかったら `None` を返すから、ちゃんとチェックしてね！
 pub fn parse_color(color_str: &str) -> Option<Color> {
-  // '#' があったら取り除いて、なかったらそのまま使うよ！
-  let s = color_str.strip_prefix('#').unwrap_or(color_str);
+    // '#' があったら取り除いて、なかったらそのまま使うよ！
+    let s = color_str.strip_prefix('#').unwrap_or(color_str);
 
-  let (r_str, g_str, b_str, a_str) = match s.len() {
-    6 => (
-      s.get(0..2)?,
-      s.get(2..4)?,
-      s.get(4..6)?,
-      "FF", // Alpha を FF (不透明) とする
-    ),
-    8 => (
-      s.get(0..2)?,
-      s.get(2..4)?,
-      s.get(4..6)?,
-      s.get(6..8)?,
-    ),
-    _ => return None, // 6桁でも8桁でもなければ無効
-  };
-  let r = u8::from_str_radix(r_str, 16).ok()?;
-  let g = u8::from_str_radix(g_str, 16).ok()?;
-  let b = u8::from_str_radix(b_str, 16).ok()?;
-  let a = u8::from_str_radix(a_str, 16).ok()?;
-  Color::from_rgba8(r, g, b, a).into() // tiny_skia::Color を返す
+    let (r_str, g_str, b_str, a_str) = match s.len() {
+        6 => (
+            s.get(0..2)?,
+            s.get(2..4)?,
+            s.get(4..6)?,
+            "FF", // Alpha を FF (不透明) とする
+        ),
+        8 => (s.get(0..2)?, s.get(2..4)?, s.get(4..6)?, s.get(6..8)?),
+        _ => return None, // 6桁でも8桁でもなければ無効
+    };
+    let r = u8::from_str_radix(r_str, 16).ok()?;
+    let g = u8::from_str_radix(g_str, 16).ok()?;
+    let b = u8::from_str_radix(b_str, 16).ok()?;
+    let a = u8::from_str_radix(a_str, 16).ok()?;
+    Color::from_rgba8(r, g, b, a).into() // tiny_skia::Color を返す
 }
 
 /// 色のアルファ値（透明度）を、`MIN_ALPHA` で定義された下限値に制限（クランプ）するよ！
@@ -43,8 +38,8 @@ pub fn clamp_alpha(mut color: Color) -> Color {
     let alpha = color.alpha();
     if alpha < MIN_ALPHA {
         // 元の色情報 (RGB) を保持しつつアルファ値だけ変更
-    color = Color::from_rgba(color.red(), color.green(), color.blue(), MIN_ALPHA)
-            .unwrap_or(color); // 失敗時は元の色を使う (ほぼありえない)
+        color =
+            Color::from_rgba(color.red(), color.green(), color.blue(), MIN_ALPHA).unwrap_or(color); // 失敗時は元の色を使う (ほぼありえない)
     }
     color
 }
@@ -144,7 +139,8 @@ pub fn calculate_hover_fill_color(base_color: Color) -> Color {
         adjusted_rgb.green() as f32 / 255.0,
         adjusted_rgb.blue() as f32 / 255.0,
         0.2, // 20% の透明度でオーバーレイ
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 /// 背景色に基づいてホバー時の枠線色を計算するよ！
@@ -184,5 +180,6 @@ pub fn calculate_hover_border_color(base_color: Color) -> Color {
         adjusted_rgb.green() as f32 / 255.0,
         adjusted_rgb.blue() as f32 / 255.0,
         0.8, // 80% の透明度
-    ).unwrap()
+    )
+    .unwrap()
 }

@@ -2,15 +2,16 @@ use std::rc::Rc;
 
 use colorsys::{Hsl, Rgb};
 // use rand::Rng; // rand::Rng は使われてないみたいだから、コメントアウトしちゃおっか！
-use tiny_skia::Color;
-use winit::{window::{Window, ResizeDirection}, dpi::PhysicalSize};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use tiny_skia::Color;
+use winit::{
+    dpi::PhysicalSize,
+    window::{ResizeDirection, Window},
+};
 
 use desktop_grouping::graphics::{self, graphics::MyGraphics};
 // logger モジュールは start_os_drag などで使ってるから、ちゃんと use しとかないとね！
-use crate::{
-  file_drag::IconInfo, logger::*,
-};
+use crate::{file_drag::IconInfo, logger::*};
 
 /// マウスホイールによるアルファ値調整のステップ量
 const ALPHA_ADJUST_STEP: f32 = 0.02;
@@ -20,151 +21,185 @@ const ALPHA_ADJUST_STEP: f32 = 0.02;
 /// グループ化されたアイコン (`IconInfo`) のリスト、
 /// そして設定ファイルと紐付けるための識別子 (`id_str`) を保持します。
 pub struct ChildWindow {
-  /// winit のウィンドウインスタンスへの参照カウンタ付きポインタ。
-  pub window: Rc<Window>,
-  /// このウィンドウ専用のグラフィックス描画インスタンス。
-  pub graphics: MyGraphics,
-  /// このウィンドウ内に配置されたアイコン情報のベクター。
-  pub groups: Vec<IconInfo>,
-  /// 設定ファイル (`config.toml`) 内の `[children]` テーブルと
-  /// このウィンドウインスタンスを紐付けるためのユニークな文字列ID。
-  /// 通常は生成時のタイムスタンプ。
-  pub id_str: String,
-  /// このウィンドウの現在のDPIスケーリングファクターだよ！
-  pub scale_factor: f64,
+    /// winit のウィンドウインスタンスへの参照カウンタ付きポインタ。
+    pub window: Rc<Window>,
+    /// このウィンドウ専用のグラフィックス描画インスタンス。
+    pub graphics: MyGraphics,
+    /// このウィンドウ内に配置されたアイコン情報のベクター。
+    pub groups: Vec<IconInfo>,
+    /// 設定ファイル (`config.toml`) 内の `[children]` テーブルと
+    /// このウィンドウインスタンスを紐付けるためのユニークな文字列ID。
+    /// 通常は生成時のタイムスタンプ。
+    pub id_str: String,
+    /// このウィンドウの現在のDPIスケーリングファクターだよ！
+    pub scale_factor: f64,
 }
 
 impl ChildWindow {
-  /// 新しい子ウィンドウインスタンスを作るよ！
-  ///
-  /// ウィンドウの実体 (`Rc<Window>`) と、ユニークなID文字列、
-  /// それから最初の背景色と枠線の色をもらって、`ChildWindow` を初期化するんだ。
-  /// グラフィックスの初期化もここで行うよ！
-  ///
-  /// # 引数
-  /// * `window` - winit のウィンドウインスタンスだよ。`Rc` で包んでね！
-  /// * `id_str` - この子ウィンドウちゃんを識別するためのユニークな文字列IDだよ。
-  /// * `bg_color_str` - 背景色の初期値を文字列で指定してね (例: `"#RRGGBBAA"`)。
-  /// * `border_color_str` - 枠線色の初期値を文字列で指定してね (例: `"#RRGGBBAA"`)。
-  pub fn new(window: Rc<Window>, id_str: String, bg_color_str: &str, border_color_str: &str) -> ChildWindow {
-    // ウィンドウが作られた時の最初の拡大率を覚えておくよ！
-    let initial_scale_factor = window.scale_factor();
-    // MyGraphics ちゃんにも最初の拡大率を教えてあげるんだ♪
-    let graphics = MyGraphics::new(&window, bg_color_str, border_color_str, initial_scale_factor);
-    ChildWindow {
-      window,
-      graphics,
-      groups: Vec::new(),
-      id_str,
-      scale_factor: initial_scale_factor,
+    /// 新しい子ウィンドウインスタンスを作るよ！
+    ///
+    /// ウィンドウの実体 (`Rc<Window>`) と、ユニークなID文字列、
+    /// それから最初の背景色と枠線の色をもらって、`ChildWindow` を初期化するんだ。
+    /// グラフィックスの初期化もここで行うよ！
+    ///
+    /// # 引数
+    /// * `window` - winit のウィンドウインスタンスだよ。`Rc` で包んでね！
+    /// * `id_str` - この子ウィンドウちゃんを識別するためのユニークな文字列IDだよ。
+    /// * `bg_color_str` - 背景色の初期値を文字列で指定してね (例: `"#RRGGBBAA"`)。
+    /// * `border_color_str` - 枠線色の初期値を文字列で指定してね (例: `"#RRGGBBAA"`)。
+    pub fn new(
+        window: Rc<Window>,
+        id_str: String,
+        bg_color_str: &str,
+        border_color_str: &str,
+    ) -> ChildWindow {
+        // ウィンドウが作られた時の最初の拡大率を覚えておくよ！
+        let initial_scale_factor = window.scale_factor();
+        // MyGraphics ちゃんにも最初の拡大率を教えてあげるんだ♪
+        let graphics = MyGraphics::new(
+            &window,
+            bg_color_str,
+            border_color_str,
+            initial_scale_factor,
+        );
+        ChildWindow {
+            window,
+            graphics,
+            groups: Vec::new(),
+            id_str,
+            scale_factor: initial_scale_factor,
+        }
     }
-  }
 
-  /// 拡大率 (`scale_factor`) が変わった時に呼び出すよ！
-  pub fn update_scale_factor(&mut self, new_scale_factor: f64) {
-    self.scale_factor = new_scale_factor;
-    self.graphics.update_scale_factor(new_scale_factor); // MyGraphics にも拡大率の変更を伝えるよ！
-  }
-
-  /// 背景色を設定するよ！
-  ///
-  /// 新しい背景色を文字列で受け取って、それをパースして適用するんだ。
-  /// それに合わせて、枠線の色もいい感じに自動計算して更新するよ！
-  /// 最後に、ウィンドウに「再描画お願いね！」って伝えるんだ♪
-  pub fn set_background_color(&mut self, color_str: &str) {
-    if let Some(bg_color) = graphics::parse_color(color_str) {
-      self.graphics.update_background_color(bg_color);
-      let border_color = calculate_border_color(bg_color, &self.id_str);
-      self.graphics.update_border_color(border_color);
-      self.window.request_redraw();
-      log_debug(&format!("Window {}: BG set to {}, Border calculated to {}", self.id_str, color_to_hex_string(bg_color), color_to_hex_string(border_color)));
-    } else {
-      log_warn(&format!("Window {}: Invalid color string received: {}", self.id_str, color_str));
+    /// 拡大率 (`scale_factor`) が変わった時に呼び出すよ！
+    pub fn update_scale_factor(&mut self, new_scale_factor: f64) {
+        self.scale_factor = new_scale_factor;
+        self.graphics.update_scale_factor(new_scale_factor); // MyGraphics にも拡大率の変更を伝えるよ！
     }
-  }
 
-  /// 背景色の透過度を調整するよ！
-  ///
-  /// `delta` の値に応じて、今の背景色のアルファ値（透明度）をちょっとずつ変えるんだ。
-  /// `ALPHA_ADJUST_STEP` で、どれくらい変えるか調整できるよ！
-  /// 透明度を変えたら、枠線の色も再計算して、再描画をお願いするよ！
-  pub fn adjust_alpha(&mut self, delta: f32) {
-    let current_bg_color = self.graphics.get_background_color();
-    let current_alpha = current_bg_color.alpha();
-    let new_alpha = (current_alpha + delta * ALPHA_ADJUST_STEP).clamp(0.0, 1.0);
-
-    if (new_alpha - current_alpha).abs() > f32::EPSILON {
-      let new_bg_color = Color::from_rgba(
-        current_bg_color.red(),
-        current_bg_color.green(),
-        current_bg_color.blue(),
-        new_alpha,
-      ).unwrap();
-
-      self.graphics.update_background_color(new_bg_color);
-      let border_color = calculate_border_color(new_bg_color, &self.id_str);
-      self.graphics.update_border_color(border_color);
-      self.window.request_redraw();
-      log_debug(&format!(
-        "Window {}: Alpha adjusted to {:.3}, Border recalculated to {}",
-        self.id_str, new_alpha, color_to_hex_string(border_color)));
+    /// 背景色を設定するよ！
+    ///
+    /// 新しい背景色を文字列で受け取って、それをパースして適用するんだ。
+    /// それに合わせて、枠線の色もいい感じに自動計算して更新するよ！
+    /// 最後に、ウィンドウに「再描画お願いね！」って伝えるんだ♪
+    pub fn set_background_color(&mut self, color_str: &str) {
+        if let Some(bg_color) = graphics::parse_color(color_str) {
+            self.graphics.update_background_color(bg_color);
+            let border_color = calculate_border_color(bg_color, &self.id_str);
+            self.graphics.update_border_color(border_color);
+            self.window.request_redraw();
+            log_debug(&format!(
+                "Window {}: BG set to {}, Border calculated to {}",
+                self.id_str,
+                color_to_hex_string(bg_color),
+                color_to_hex_string(border_color)
+            ));
+        } else {
+            log_warn(&format!(
+                "Window {}: Invalid color string received: {}",
+                self.id_str, color_str
+            ));
+        }
     }
-  }
 
-  /// この子ウィンドウにアイコン情報を追加するよ！
-  ///
-  /// `IconInfo` を受け取って、ウィンドウが持ってるアイコンのリスト (`groups`) に追加するだけ！シンプルだね！
-  pub fn add(&mut self, icon: IconInfo) {
-    self.groups.push(icon);
-  }
+    /// 背景色の透過度を調整するよ！
+    ///
+    /// `delta` の値に応じて、今の背景色のアルファ値（透明度）をちょっとずつ変えるんだ。
+    /// `ALPHA_ADJUST_STEP` で、どれくらい変えるか調整できるよ！
+    /// 透明度を変えたら、枠線の色も再計算して、再描画をお願いするよ！
+    pub fn adjust_alpha(&mut self, delta: f32) {
+        let current_bg_color = self.graphics.get_background_color();
+        let current_alpha = current_bg_color.alpha();
+        let new_alpha = (current_alpha + delta * ALPHA_ADJUST_STEP).clamp(0.0, 1.0);
 
-  /// ウィンドウのサイズが変更されたときに、グラフィックス側にも教えてあげるよ！
-  ///
-  /// `MyGraphics` ちゃんが持ってるバッファとかを、新しいサイズに合わせて調整してもらうんだ。
-  pub fn resize_graphics(&mut self, new_size: PhysicalSize<u32>) {
-    self.graphics.resize(new_size);
-  }
+        if (new_alpha - current_alpha).abs() > f32::EPSILON {
+            let new_bg_color = Color::from_rgba(
+                current_bg_color.red(),
+                current_bg_color.green(),
+                current_bg_color.blue(),
+                new_alpha,
+            )
+            .unwrap();
 
-  /// ウィンドウの内容を描画するよ！
-  ///
-  /// まず `graphics.draw_start()` でお絵かきの準備をして、
-  /// 持ってるアイコン (`groups`) を一つずつ `graphics.draw_group()` で描いてもらうんだ。
-  /// もし `hovered_index` が指定されてたら、そのアイコンはちょっと目立つように描かれるかも！
-  /// 最後に `graphics.draw_finish()` で画面に表示するよ！
-  pub fn draw(&mut self, hovered_index: Option<usize>, executing_index: Option<usize>) {
-    self.graphics.draw_start();
-    let mut index = 0;
-    self.groups.iter().for_each(|icon_info| {
-      let is_hovered = hovered_index.map_or(false, |h_idx| h_idx == index);
-      let is_executing = executing_index.map_or(false, |e_idx| e_idx == index);
-      // icon_info.name は String だから、clone() しなくても参照で渡せるね！
-      self.graphics.draw_group(index, &icon_info.name, &icon_info.icon, is_hovered, is_executing);
-      index += 1;
-    });
-    self.graphics.draw_finish();
-  }
-
-  // --- OSへの指示を出すメソッドたちだよ！ ---
-  // これらは、ウィンドウマネージャーさん (OS) に「ちょっとこれお願い！」って伝えるためのものだよ。
-  // エラーが起きてもパニックしないで、ログに記録するようになってるんだ。えらい！
-
-  /// このウィンドウをOSレベルでドラッグ開始するよう指示するよ！
-  /// ユーザーがウィンドウを掴んで動かせるようにするんだ。
-  pub fn start_os_drag(&self) {
-    if let Err(e) = self.window.drag_window() {
-        crate::logger::log_error(&format!("Window drag_window failed for {:?}: {}", self.id_str, e));
+            self.graphics.update_background_color(new_bg_color);
+            let border_color = calculate_border_color(new_bg_color, &self.id_str);
+            self.graphics.update_border_color(border_color);
+            self.window.request_redraw();
+            log_debug(&format!(
+                "Window {}: Alpha adjusted to {:.3}, Border recalculated to {}",
+                self.id_str,
+                new_alpha,
+                color_to_hex_string(border_color)
+            ));
+        }
     }
-  }
 
-  /// このウィンドウをOSレベルでリサイズ開始するよう指示するよ！
-  /// ユーザーがウィンドウの端を掴んで大きさを変えられるようにするんだ。どの方向かは `direction` で指定するよ。
-  pub fn start_os_resize(&self, direction: ResizeDirection) {
-    if let Err(e) = self.window.drag_resize_window(direction) {
-        crate::logger::log_error(&format!("Window drag_resize_window failed for {:?} (dir: {:?}): {}", self.id_str, direction, e));
+    /// この子ウィンドウにアイコン情報を追加するよ！
+    ///
+    /// `IconInfo` を受け取って、ウィンドウが持ってるアイコンのリスト (`groups`) に追加するだけ！シンプルだね！
+    pub fn add(&mut self, icon: IconInfo) {
+        self.groups.push(icon);
     }
-  }
 
-  // backmost の処理は ui_wam を使うから、WindowManager 側で child.window を渡す形の方が素直かも。
+    /// ウィンドウのサイズが変更されたときに、グラフィックス側にも教えてあげるよ！
+    ///
+    /// `MyGraphics` ちゃんが持ってるバッファとかを、新しいサイズに合わせて調整してもらうんだ。
+    pub fn resize_graphics(&mut self, new_size: PhysicalSize<u32>) {
+        self.graphics.resize(new_size);
+    }
+
+    /// ウィンドウの内容を描画するよ！
+    ///
+    /// まず `graphics.draw_start()` でお絵かきの準備をして、
+    /// 持ってるアイコン (`groups`) を一つずつ `graphics.draw_group()` で描いてもらうんだ。
+    /// もし `hovered_index` が指定されてたら、そのアイコンはちょっと目立つように描かれるかも！
+    /// 最後に `graphics.draw_finish()` で画面に表示するよ！
+    pub fn draw(&mut self, hovered_index: Option<usize>, executing_index: Option<usize>) {
+        self.graphics.draw_start();
+        let mut index = 0;
+        self.groups.iter().for_each(|icon_info| {
+            let is_hovered = hovered_index.map_or(false, |h_idx| h_idx == index);
+            let is_executing = executing_index.map_or(false, |e_idx| e_idx == index);
+            // icon_info.name は String だから、clone() しなくても参照で渡せるね！
+            self.graphics.draw_group(
+                index,
+                &icon_info.name,
+                &icon_info.icon,
+                is_hovered,
+                is_executing,
+            );
+            index += 1;
+        });
+        self.graphics.draw_finish();
+    }
+
+    // --- OSへの指示を出すメソッドたちだよ！ ---
+    // これらは、ウィンドウマネージャーさん (OS) に「ちょっとこれお願い！」って伝えるためのものだよ。
+    // エラーが起きてもパニックしないで、ログに記録するようになってるんだ。えらい！
+
+    /// このウィンドウをOSレベルでドラッグ開始するよう指示するよ！
+    /// ユーザーがウィンドウを掴んで動かせるようにするんだ。
+    pub fn start_os_drag(&self) {
+        if let Err(e) = self.window.drag_window() {
+            crate::logger::log_error(&format!(
+                "Window drag_window failed for {:?}: {}",
+                self.id_str, e
+            ));
+        }
+    }
+
+    /// このウィンドウをOSレベルでリサイズ開始するよう指示するよ！
+    /// ユーザーがウィンドウの端を掴んで大きさを変えられるようにするんだ。どの方向かは `direction` で指定するよ。
+    pub fn start_os_resize(&self, direction: ResizeDirection) {
+        if let Err(e) = self.window.drag_resize_window(direction) {
+            crate::logger::log_error(&format!(
+                "Window drag_resize_window failed for {:?} (dir: {:?}): {}",
+                self.id_str, direction, e
+            ));
+        }
+    }
+
+    // backmost の処理は ui_wam を使うから、WindowManager 側で child.window を渡す形の方が素直かも。
 }
 
 /// 背景色とウィンドウIDに基づいて、コントラストを考慮した枠線色を計算するよ！
@@ -180,38 +215,42 @@ impl ChildWindow {
 ///     これで、同じような背景色でもウィンドウごとに枠線色が微妙に変わって、見分けやすくなるかも！
 /// 6.  **RGBに戻す**: 最後にHSLからRGBに戻して、`tiny_skia::Color` にして返すよ！
 fn calculate_border_color(bg_color: Color, id_str: &str) -> Color {
-  let mut hasher = DefaultHasher::new();
-  id_str.hash(&mut hasher);
-  let hash = hasher.finish();
+    let mut hasher = DefaultHasher::new();
+    id_str.hash(&mut hasher);
+    let hash = hasher.finish();
 
-  // 背景色を HSL に変換
-  let bg_rgb = Rgb::from((bg_color.red() as f64 * 255.0, bg_color.green() as f64 * 255.0, bg_color.blue() as f64 * 255.0));
-  let bg_hsl: Hsl = bg_rgb.as_ref().into();
+    // 背景色を HSL に変換
+    let bg_rgb = Rgb::from((
+        bg_color.red() as f64 * 255.0,
+        bg_color.green() as f64 * 255.0,
+        bg_color.blue() as f64 * 255.0,
+    ));
+    let bg_hsl: Hsl = bg_rgb.as_ref().into();
 
-  // 補色をベースに
-  let mut border_hsl = bg_hsl.clone();
-  border_hsl.set_hue((bg_hsl.hue() + 180.0) % 360.0);
+    // 補色をベースに
+    let mut border_hsl = bg_hsl.clone();
+    border_hsl.set_hue((bg_hsl.hue() + 180.0) % 360.0);
 
-  // 輝度差を確保
-  let bg_luminance = bg_hsl.lightness();
-  if bg_luminance > 50.0 {
-    border_hsl.set_lightness(border_hsl.lightness().min(40.0));
-  } else {
-    border_hsl.set_lightness(border_hsl.lightness().max(60.0));
-  }
-  border_hsl.set_saturation(border_hsl.saturation().max(30.0));
-  // ハッシュ値で色相を少しだけずらす
-  let hue_shift = (hash % 21) as f64 - 10.0;
-  border_hsl.set_hue((border_hsl.hue() + hue_shift + 360.0) % 360.0);
+    // 輝度差を確保
+    let bg_luminance = bg_hsl.lightness();
+    if bg_luminance > 50.0 {
+        border_hsl.set_lightness(border_hsl.lightness().min(40.0));
+    } else {
+        border_hsl.set_lightness(border_hsl.lightness().max(60.0));
+    }
+    border_hsl.set_saturation(border_hsl.saturation().max(30.0));
+    // ハッシュ値で色相を少しだけずらす
+    let hue_shift = (hash % 21) as f64 - 10.0;
+    border_hsl.set_hue((border_hsl.hue() + hue_shift + 360.0) % 360.0);
 
-  let border_rgb: Rgb = (&border_hsl).into();
+    let border_rgb: Rgb = (&border_hsl).into();
 
-  Color::from_rgba8(
-    border_rgb.red() as u8,
-    border_rgb.green() as u8,
-    border_rgb.blue() as u8,
-    255, // 枠線は今のところ不透明固定だよ！
-  )
+    Color::from_rgba8(
+        border_rgb.red() as u8,
+        border_rgb.green() as u8,
+        border_rgb.blue() as u8,
+        255, // 枠線は今のところ不透明固定だよ！
+    )
 }
 
 /// `tiny_skia::Color` を `#RRGGBBAA` 形式の文字列に変換するよ！

@@ -3,28 +3,29 @@
 
 mod file_drag;
 // mod logger; // logger は lib.rs にお引越ししたから、ここからは消すね！
-mod mywindow;
 mod child_window; // 新しいお家を教えてあげるよ！
-mod window_utils; // 便利屋さんのお家も教えてあげる！
+mod mywindow;
 mod settings;
+mod window_utils; // 便利屋さんのお家も教えてあげる！
 
-use std::rc::Rc;
 use arboard::Clipboard;
 use desktop_grouping::tray::tray_icon::create_tray;
 use file_drag::IconInfo;
 use logger::{log_debug, log_info, log_warn};
 use mywindow::UserEvent;
+use std::rc::Rc;
 
 // generate_child_id, ChildSettings など必要なものをインポート
 use desktop_grouping::logger; // logger モジュールをライブラリから使うよ！
 
-use settings::{
-  generate_child_id, get_settings_reader, get_settings_writer, ChildSettings,
-};
-use winit::{dpi::PhysicalPosition,
-  event::{DeviceEvent, ElementState, Event, MouseButton, MouseScrollDelta, StartCause, WindowEvent},
-  event_loop::{ControlFlow, EventLoopBuilder},
-  keyboard::{Key, NamedKey},
+use settings::{ChildSettings, generate_child_id, get_settings_reader, get_settings_writer};
+use winit::{
+    dpi::PhysicalPosition,
+    event::{
+        DeviceEvent, ElementState, Event, MouseButton, MouseScrollDelta, StartCause, WindowEvent,
+    },
+    event_loop::{ControlFlow, EventLoopBuilder},
+    keyboard::{Key, NamedKey},
 };
 
 const MOUSE_WHEEL_PIXEL_TO_LINE_FACTOR: f64 = 30.0; // スクロールの変換係数 (環境に合わせて調整)
@@ -39,58 +40,61 @@ const MENU_ID_QUIT: &str = "1002";
 ///
 /// イベントループを作成し、ウィンドウやトレイアイコンを初期化して実行します。
 fn main() {
-  // ロガーの初期化
-  logger::init();
+    // ロガーの初期化
+    logger::init();
 
-  // イベントループの作成
-  let event_loop = EventLoopBuilder::with_user_event()
-    .build()
-    .expect("Failed to create event loop");
+    // イベントループの作成
+    let event_loop = EventLoopBuilder::with_user_event()
+        .build()
+        .expect("Failed to create event loop");
 
-  // メインウィンドウ作成 (非表示)
-  let _main_window = window_utils::create_main_window(&event_loop); // 便利屋さんにお願い！
+    // メインウィンドウ作成 (非表示)
+    let _main_window = window_utils::create_main_window(&event_loop); // 便利屋さんにお願い！
 
-  // WindowManager の初期化
-  // WindowManager の初期化時にクリップボードも初期化
-  let clipboard = Clipboard::new().ok(); // エラーは許容する (None になる)
-  let mut manager = mywindow::WindowManager::new(clipboard); // new に引数を追加
+    // WindowManager の初期化
+    // WindowManager の初期化時にクリップボードも初期化
+    let clipboard = Clipboard::new().ok(); // エラーは許容する (None になる)
+    let mut manager = mywindow::WindowManager::new(clipboard); // new に引数を追加
 
-  // トレイアイコンの作成
-  let _tray = create_tray();
-  // トレイイベント用プロキシ
-  let proxy = event_loop.create_proxy();
-  tray_icon::menu::MenuEvent::set_event_handler(Some(move |event| {
-    if let Err(e) = proxy.send_event(UserEvent::MenuEvent(event)) {
-      // イベント送信失敗時のログを追加 (より丁寧なエラーハンドリング)
-      logger::log_error(&format!("Failed to send MenuEvent: {:?}", e));
-    }
-  }));
-
-  // --- イベントループの実行 ---
-  event_loop
-    .run(move |event, target| { // target は EventLoopWindowTarget
-      target.set_control_flow(ControlFlow::Wait);
-      match event {
-        Event::NewEvents(StartCause::Init) => handle_new_events_init(target, &mut manager),
-        Event::WindowEvent { event, window_id } => handle_window_event(target, &mut manager, event, window_id),
-        Event::DeviceEvent { event, .. } => handle_device_event(&mut manager, event),
-        Event::UserEvent(user_event) => handle_user_event(target, &mut manager, user_event),
-        Event::LoopExiting => {
-          log_info("Exiting application...");
-          // --- 終了時の保存処理は不要になったよ！ ---
+    // トレイアイコンの作成
+    let _tray = create_tray();
+    // トレイイベント用プロキシ
+    let proxy = event_loop.create_proxy();
+    tray_icon::menu::MenuEvent::set_event_handler(Some(move |event| {
+        if let Err(e) = proxy.send_event(UserEvent::MenuEvent(event)) {
+            // イベント送信失敗時のログを追加 (より丁寧なエラーハンドリング)
+            logger::log_error(&format!("Failed to send MenuEvent: {:?}", e));
         }
-        _ => {} // 他のイベントは無視
-      }
-    })
-    .expect("Failed to start event loop");
+    }));
+
+    // --- イベントループの実行 ---
+    event_loop
+        .run(move |event, target| {
+            // target は EventLoopWindowTarget
+            target.set_control_flow(ControlFlow::Wait);
+            match event {
+                Event::NewEvents(StartCause::Init) => handle_new_events_init(target, &mut manager),
+                Event::WindowEvent { event, window_id } => {
+                    handle_window_event(target, &mut manager, event, window_id)
+                }
+                Event::DeviceEvent { event, .. } => handle_device_event(&mut manager, event),
+                Event::UserEvent(user_event) => handle_user_event(target, &mut manager, user_event),
+                Event::LoopExiting => {
+                    log_info("Exiting application...");
+                    // --- 終了時の保存処理は不要になったよ！ ---
+                }
+                _ => {} // 他のイベントは無視
+            }
+        })
+        .expect("Failed to start event loop");
 }
 
 /// `Event::NewEvents(StartCause::Init)` イベントを処理するよ！
 fn handle_new_events_init(
-  target: &winit::event_loop::EventLoopWindowTarget<UserEvent>,
-  manager: &mut mywindow::WindowManager,
+    target: &winit::event_loop::EventLoopWindowTarget<UserEvent>,
+    manager: &mut mywindow::WindowManager,
 ) {
-  // --- 設定から既存の子ウィンドウを読み込む ---
+    // --- 設定から既存の子ウィンドウを読み込む ---
     {
         // settings_reader のスコープを限定
         let settings_reader = get_settings_reader();
@@ -100,9 +104,11 @@ fn handle_new_events_init(
             let mut initial_position = PhysicalPosition::new(child_setting.x, child_setting.y); // まずは今までの仮想座標を使うね！
 
             // もしモニター情報があったら…
-            if let (Some(monitor_name), Some(monitor_x), Some(monitor_y)) =
-                (&child_setting.monitor_name, child_setting.monitor_x, child_setting.monitor_y)
-            {
+            if let (Some(monitor_name), Some(monitor_x), Some(monitor_y)) = (
+                &child_setting.monitor_name,
+                child_setting.monitor_x,
+                child_setting.monitor_y,
+            ) {
                 let mut found_monitor = false;
                 // 今つながってるモニターの中に、覚えてた名前のモニターがあるか探すよ！
                 for monitor_handle in target.available_monitors() {
@@ -114,7 +120,12 @@ fn handle_new_events_init(
                         initial_position.y = current_monitor_pos.y + monitor_y;
                         log_info(&format!(
                             "Window {} restored to monitor '{}' at relative ({}, {}), virtual ({}, {})",
-                            id_str, monitor_name, monitor_x, monitor_y, initial_position.x, initial_position.y
+                            id_str,
+                            monitor_name,
+                            monitor_x,
+                            monitor_y,
+                            initial_position.x,
+                            initial_position.y
                         ));
                         found_monitor = true;
                         break; // 見つかったからループは終わり！
@@ -137,14 +148,20 @@ fn handle_new_events_init(
             let mut effective_settings = child_setting.clone();
             effective_settings.x = initial_position.x;
             effective_settings.y = initial_position.y;
-            let child_window = window_utils::create_child_window(&target, Some(&effective_settings)); // 便利屋さんにお願い！
+            let child_window =
+                window_utils::create_child_window(&target, Some(&effective_settings)); // 便利屋さんにお願い！
             let child_window_id = child_window.id();
 
             // アイコン復元処理だよっ！
             // manager にウィンドウを登録してからアイコン情報をロードするね！
 
             // manager にウィンドウと id_str、設定情報を登録
-            manager.insert(&child_window_id, Rc::new(child_window), id_str.clone(), child_setting);
+            manager.insert(
+                &child_window_id,
+                Rc::new(child_window),
+                id_str.clone(),
+                child_setting,
+            );
             // 次に、設定から読み込んだアイコンパスを使ってアイコンを復元し、manager 経由で追加
             manager.restore_icons(&child_window_id, &child_setting.icons);
             manager.backmost(&child_window_id);
@@ -158,13 +175,13 @@ fn handle_new_events_init(
 
 /// `Event::WindowEvent` を処理するよ！
 fn handle_window_event(
-  target: &winit::event_loop::EventLoopWindowTarget<UserEvent>,
-  manager: &mut mywindow::WindowManager,
-  event: WindowEvent,
-  window_id: winit::window::WindowId,
+    target: &winit::event_loop::EventLoopWindowTarget<UserEvent>,
+    manager: &mut mywindow::WindowManager,
+    event: WindowEvent,
+    window_id: winit::window::WindowId,
 ) {
-  // manager が管理していないウィンドウからのイベントは無視
-  if !manager.has_window(&window_id) {
+    // manager が管理していないウィンドウからのイベントは無視
+    if !manager.has_window(&window_id) {
         return;
     }
 
@@ -208,10 +225,13 @@ fn handle_window_event(
             // `new_inner_size` は winit の最近のバージョンではこのイベントに含まれなくなったみたい。
             // サイズの変更は `Resized` イベントで処理されるから、ここでは主にスケールファクターの更新と
             // それに伴う位置の調整、再描画の要求をするよ！
-            log_info(&format!("Window {:?}: ScaleFactorChanged to {}", window_id, scale_factor));
+            log_info(&format!(
+                "Window {:?}: ScaleFactorChanged to {}",
+                window_id, scale_factor
+            ));
             if let Some(child_window) = manager.get_child_window_mut(&window_id) {
                 let old_scale_factor = child_window.scale_factor; // 前の拡大率を覚えておく
-                child_window.update_scale_factor(scale_factor);   // 新しい拡大率を ChildWindow と MyGraphics に教える
+                child_window.update_scale_factor(scale_factor); // 新しい拡大率を ChildWindow と MyGraphics に教える
 
                 // 見た目の位置が変わらないように、物理的な位置を調整するよ！
                 if let Ok(current_physical_pos) = child_window.window.outer_position() {
@@ -221,8 +241,16 @@ fn handle_window_event(
                     let new_physical_pos_x = (logical_pos_x * scale_factor) as i32;
                     let new_physical_pos_y = (logical_pos_y * scale_factor) as i32;
 
-                    child_window.window.set_outer_position(PhysicalPosition::new(new_physical_pos_x, new_physical_pos_y));
-                    log_debug(&format!("Position adjusted to ({}, {})", new_physical_pos_x, new_physical_pos_y));
+                    child_window
+                        .window
+                        .set_outer_position(PhysicalPosition::new(
+                            new_physical_pos_x,
+                            new_physical_pos_y,
+                        ));
+                    log_debug(&format!(
+                        "Position adjusted to ({}, {})",
+                        new_physical_pos_x, new_physical_pos_y
+                    ));
                 }
                 child_window.window.request_redraw(); // 再描画をお願い！
             }
@@ -252,8 +280,13 @@ fn handle_window_event(
             }
             // マウスボタンが離された時、かつ移動またはリサイズ操作中だった場合に保存
             // manager.is_moving.keybord_pressed (Ctrl) や manager.is_resizing.keybord_pressed (Shift) の状態を見てるね！
-            if state == ElementState::Released && (manager.is_moving.keybord_pressed || manager.is_resizing.keybord_pressed) {
-                log_debug(&format!("Mouse released after move/resize on window {:?}. Saving settings.", window_id));
+            if state == ElementState::Released
+                && (manager.is_moving.keybord_pressed || manager.is_resizing.keybord_pressed)
+            {
+                log_debug(&format!(
+                    "Mouse released after move/resize on window {:?}. Saving settings.",
+                    window_id
+                ));
                 manager.save_child_settings(window_id);
             }
         }
@@ -286,19 +319,19 @@ fn handle_window_event(
             }
             manager.set_last_cursor_window(None); // ★カーソルが離れたことを記録
             // ドラッグ操作中かもしれないので、ここで保存するのが安全
-            log_debug(&format!("Cursor left window {:?}. Saving settings.", window_id));
+            log_debug(&format!(
+                "Cursor left window {:?}. Saving settings.",
+                window_id
+            ));
             manager.save_child_settings(window_id);
         }
-        WindowEvent::Moved( .. ) => {} // ウィンドウ移動完了時のイベント
+        WindowEvent::Moved(..) => {} // ウィンドウ移動完了時のイベント
         _ => {}
     }
 }
 
 /// `Event::DeviceEvent` を処理するよ！
-fn handle_device_event(
-  manager: &mut mywindow::WindowManager,
-  event: DeviceEvent,
-) {
+fn handle_device_event(manager: &mut mywindow::WindowManager, event: DeviceEvent) {
     match event {
         DeviceEvent::MouseMotion { .. } => {
             manager.start_resizing();
@@ -309,7 +342,9 @@ fn handle_device_event(
             if manager.is_moving.keybord_pressed {
                 let y_delta = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(pos) => (pos.y / MOUSE_WHEEL_PIXEL_TO_LINE_FACTOR) as f32,
+                    MouseScrollDelta::PixelDelta(pos) => {
+                        (pos.y / MOUSE_WHEEL_PIXEL_TO_LINE_FACTOR) as f32
+                    }
                 };
                 if y_delta.abs() > f32::EPSILON {
                     log_debug(&format!("Ctrl+MouseWheel detected: delta_y = {}", y_delta));
@@ -323,30 +358,43 @@ fn handle_device_event(
 
 /// `Event::UserEvent` (トレイメニューイベント) を処理するよ！
 fn handle_user_event(
-  target: &winit::event_loop::EventLoopWindowTarget<UserEvent>,
-  manager: &mut mywindow::WindowManager,
-  user_event: UserEvent,
+    target: &winit::event_loop::EventLoopWindowTarget<UserEvent>,
+    manager: &mut mywindow::WindowManager,
+    user_event: UserEvent,
 ) {
     match user_event {
         UserEvent::MenuEvent(event) => match event.id.as_ref() {
-            MENU_ID_NEW_GROUP => { // "New Group" の処理だよ！
+            MENU_ID_NEW_GROUP => {
+                // "New Group" の処理だよ！
                 log_info("MenuEvent: New Group.");
                 let new_id_str = generate_child_id();
                 let default_settings = ChildSettings::default();
                 {
                     let mut settings_writer = get_settings_writer();
-                    settings_writer.children.insert(new_id_str.clone(), default_settings.clone());
-                    log_info(&format!("Inserted default settings for new window: {}", new_id_str));
+                    settings_writer
+                        .children
+                        .insert(new_id_str.clone(), default_settings.clone());
+                    log_info(&format!(
+                        "Inserted default settings for new window: {}",
+                        new_id_str
+                    ));
                 }
-                let child_window = window_utils::create_child_window(target, Some(&default_settings)); // 便利屋さんにお願い！
+                let child_window =
+                    window_utils::create_child_window(target, Some(&default_settings)); // 便利屋さんにお願い！
                 let child_window_id = child_window.id();
-                manager.insert(&child_window_id, Rc::new(child_window), new_id_str, &default_settings);
+                manager.insert(
+                    &child_window_id,
+                    Rc::new(child_window),
+                    new_id_str,
+                    &default_settings,
+                );
                 manager.backmost(&child_window_id);
                 if let Some(child_win) = manager.get_window_ref(&child_window_id) {
                     child_win.request_redraw();
                 }
             }
-            MENU_ID_QUIT => { // "Quit" の処理だよ！
+            MENU_ID_QUIT => {
+                // "Quit" の処理だよ！
                 log_info("MenuEvent: Quit.");
                 target.exit();
             }

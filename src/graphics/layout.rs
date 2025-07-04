@@ -5,7 +5,7 @@ use tiny_skia::Rect;
 // これらが scale_factor で拡大縮小されるんだ♪
 pub const BASE_PADDING: f32 = 10.0;
 pub const BASE_LAYOUT_ICON_SIZE: f32 = 48.0;
-pub const BASE_PADDING_UNDER_ICON: f32 = 12.0;
+pub const BASE_PADDING_UNDER_ICON: f32 = 2.0;
 pub const BASE_TEXT_HEIGHT: f32 = 16.0;
 pub const BASE_TEXT_FONT_SIZE: f32 = 16.0;
 pub const BASE_ADJUST_SELECT_RECT: f32 = 3.0;
@@ -101,7 +101,7 @@ pub fn get_item_rect_f32(
     let rect = Rect::from_xywh(
         grid_x,
         adjusted_y,
-        item_width - BASE_PADDING,
+        item_width - padding,
         adjusted_height,
     ); // 右と下のパディングを除く範囲
 
