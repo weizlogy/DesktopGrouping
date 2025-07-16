@@ -1,5 +1,5 @@
 use ab_glyph::{Font, GlyphId, PxScale, ScaleFont};
-use tiny_skia::Rect;
+use tiny_skia::{Color, Rect};
 
 // --- ベースとなるレイアウト定数だよ！ ---
 // これらが scale_factor で拡大縮小されるんだ♪
@@ -45,7 +45,7 @@ pub fn calculate_internal_layout(
     // layout_icon_size や padding は、もうスケーリングされた値だよ！
     let max_text_width = layout_icon_size * 2.0; // アイコンサイズの2倍をテキストの最大幅に
     let item_width = max_text_width + padding; // 1アイテムの幅 = テキスト幅 + 右の余白
-                                               // 1アイテムの高さ = アイコン高さ + アイコンと文字の間の余白 + 文字の高さ + 下の余白
+    // 1アイテムの高さ = アイコン高さ + アイコンと文字の間の余白 + 文字の高さ + 下の余白
     let item_height = layout_icon_size + padding_under_icon + text_height + padding;
 
     // 1行に何個アイテムを置けるかな？
@@ -57,12 +57,7 @@ pub fn calculate_internal_layout(
     } else {
         1 // item_width が0になることはないはずだけど、念のため！
     };
-    (
-        items_per_row,
-        max_text_width,
-        item_width,
-        item_height,
-    )
+    (items_per_row, max_text_width, item_width, item_height)
 }
 
 /// 指定されたインデックスのアイテム全体（アイコン、テキスト、パディング）が
@@ -95,15 +90,52 @@ pub fn get_item_rect_f32(
 
     // adjust_select_rect もスケーリング済みの値を使うよ！
     let adjusted_y = grid_y - adjust_select_rect;
-    let adjusted_height = (item_height - padding) - adjust_select_rect; // アイテムの高さから下のパディングを引いて、さらに調整！
+    // 選択範囲の矩形の高さを計算するよ。
+    // コンテンツ（アイコン＋テキスト）の高さに、上下のパディングとして adjust_select_rect を加えるんだ。
+    // これで、上下に均等な余白ができて、見た目が良くなるはず！
+    let adjusted_height = (item_height - padding) + (adjust_select_rect * 2.0);
 
     // アイテム全体の矩形を作成 (item_width, item_height を使用)
-    let rect = Rect::from_xywh(
-        grid_x,
-        adjusted_y,
-        item_width - padding,
-        adjusted_height,
-    ); // 右と下のパディングを除く範囲
+    let rect = Rect::from_xywh(grid_x, adjusted_y, item_width - padding, adjusted_height); // 右と下のパディングを除く範囲
 
     rect // intersect は Option<Rect> を返すので、そのまま返す
+}
+
+/// 背景色を受け取り、コントラスト比が高い（＝見やすい）テキスト色（黒または白）を返します。
+///
+/// WCAG (Web Content Accessibility Guidelines) で定義されている輝度比の計算式を
+/// もとにして、背景色が明るいか暗いかを判定しています。
+///
+/// # Arguments
+///
+/// * `bg_color` - 背景色を表す `tiny_skia::Color`。
+///
+/// # Returns
+///
+/// * `tiny_skia::Color` - 背景色に対して見やすいテキスト色（黒または白）。
+pub fn get_contrasting_text_color(bg_color: Color) -> Color {
+  // sRGBの色成分を[0, 1]の範囲の線形値に変換します。
+  // tiny_skia::Color の .red() などは既に [0.0, 1.0] の f32 を返すので、それを使います。
+  // See: https://www.w3.org/TR/WCAG20-TECHS/G17.html#G17-procedure
+  let srgb_to_linear = |c_linear: f32| {
+    if c_linear <= 0.03928 {
+      c_linear / 12.92
+    } else {
+      ((c_linear + 0.055) / 1.055).powf(2.4)
+    }
+  };
+
+  let r = srgb_to_linear(bg_color.red());
+  let g = srgb_to_linear(bg_color.green());
+  let b = srgb_to_linear(bg_color.blue());
+
+  // 相対輝度 (Luminance) を計算します。
+  let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+  // 輝度のしきい値に基づいて、適切なテキスト色を返します。
+  if luminance > 0.4 {
+    Color::from_rgba8(0, 0, 0, 255) // 明るい背景には黒いテキスト
+  } else {
+    Color::from_rgba8(255, 255, 255, 255) // 暗い背景には白いテキスト
+  }
 }

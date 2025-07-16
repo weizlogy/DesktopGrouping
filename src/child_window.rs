@@ -156,20 +156,22 @@ impl ChildWindow {
     /// 最後に `graphics.draw_finish()` で画面に表示するよ！
     pub fn draw(&mut self, hovered_index: Option<usize>, executing_index: Option<usize>) {
         self.graphics.draw_start();
-        let mut index = 0;
-        self.groups.iter().for_each(|icon_info| {
+
+        // iter_mut() を使うことで、各 icon_info を可変で借用できる。
+        // これにより、get_or_load_icon() 内でキャッシュの更新が可能になる。
+        for (index, icon_info) in self.groups.iter_mut().enumerate() {
             let is_hovered = hovered_index.map_or(false, |h_idx| h_idx == index);
             let is_executing = executing_index.map_or(false, |e_idx| e_idx == index);
-            // icon_info.name は String だから、clone() しなくても参照で渡せるね！
-            self.graphics.draw_group(
-                index,
-                &icon_info.name,
-                &icon_info.icon,
-                is_hovered,
-                is_executing,
-            );
-            index += 1;
-        });
+
+            // 借用(borrow)の競合を避けるため、先に不変の借用で名前をクローンしておく。
+            // これにより、get_or_load_icon()による可変の借用と、名前の参照が同時に存在しなくなる。
+            let name = icon_info.name.clone();
+
+            // 描画が必要なこのタイミングで、アイコンデータを取得（または遅延読み込み）
+            let icon_data = icon_info.get_or_load_icon();
+            self.graphics
+                .draw_group(index, &name, icon_data, is_hovered, is_executing);
+        }
         self.graphics.draw_finish();
     }
 

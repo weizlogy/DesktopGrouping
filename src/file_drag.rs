@@ -7,24 +7,23 @@ use windows::Win32::Graphics::Gdi::BITMAPINFO;
 use std::sync::Mutex;
 #[cfg(test)]
 static ICON_FETCH_MUTEX: Mutex<()> = Mutex::new(()); // テストの時だけ使う秘密の鍵だよっ！
-use crate::logger::{log_error, log_info};
+use crate::logger::{log_debug, log_error, log_info};
 
 /// ドラッグされたファイルの情報を保持する構造体
 #[derive(Debug)]
 pub struct IconInfo {
     pub path: PathBuf,
     pub name: String,
-    pub icon: (BITMAPINFO, Vec<u8>),
+    // アイコンデータは遅延読み込みしてキャッシュする
+    icon_cache: Option<(BITMAPINFO, Vec<u8>)>,
 }
 
 impl IconInfo {
-    /// 新しい `IconInfo` インスタンスを作るよ！
+    /// 新しい `IconInfo` インスタンスを（遅延読み込みで）作成します。
     ///
-    /// ファイルのパスから、ファイル名（拡張子なし）とアイコン情報を取得するんだ。
-    /// もしファイル名がうまく取れなかったら、パス全体を名前にしちゃうこともあるよ！(・ω<)
-    /// アイコン取得に失敗したら、デフォルトの空っぽアイコンになっちゃうから気をつけてね！
-    ///
-    /// テストの時は、アイコン取得が順番こになるように `ICON_FETCH_MUTEX` っていう秘密の鍵を使ってるんだ♪
+    /// ファイルのパスから、ファイル名（拡張子なし）を取得します。
+    /// この時点ではアイコンの読み込みは行わず、パスと名前のみを保持します。
+    /// アイコンデータは `get_or_load_icon` が初めて呼ばれたときに読み込まれます。
     pub fn new(path: PathBuf) -> Self {
         // ファイル名を取得するよ！拡張子はナシでね！(ゝω・)v
         let name = path
@@ -40,33 +39,47 @@ impl IconInfo {
             });
 
         log_info(&format!(
-            "IconInfo作成中… Path: {:?}, Name: {:?}",
+            "IconInfo作成 (遅延): Path: {:?}, Name: {:?}",
             path, name
         ));
 
-        let icon = {
+        IconInfo {
+            path,
+            name,
+            icon_cache: None, // この時点ではアイコンデータは空 (None)
+        }
+    }
+
+    /// アイコンデータを取得または遅延読み込みします。
+    ///
+    /// 内部にキャッシュがあればそれを返し、なければディスクから読み込みます。
+    /// 読み込みに成功しても失敗しても、結果はキャッシュされ、次回以降はキャッシュが返されます。
+    pub fn get_or_load_icon(&mut self) -> &(BITMAPINFO, Vec<u8>) {
+        // `get_or_insert_with` を使うと、`icon_cache` が `None` の場合だけクロージャが実行されて、
+        // 結果がキャッシュに保存される。とてもスマートな方法。
+        self.icon_cache.get_or_insert_with(|| {
+            log_debug(&format!("Lazy loading icon for: {:?}", self.path));
             #[cfg(test)]
-            let _guard = ICON_FETCH_MUTEX.lock().unwrap(); // テストの時は、順番にアイコンを取りに行くよ！
-            // Windowsくんからファイルアイコンをもらってくるよ！
-            match ui_shell::get_file_icon(&path) {
+            let _guard = ICON_FETCH_MUTEX.lock().unwrap(); // テストの時は、順番にアイコンを取りに行く
+
+            // Windows API を呼び出してファイルアイコンを取得
+            match ui_shell::get_file_icon(&self.path) {
                 Ok(icon_data) => {
-                    log_info(&format!("Icon: {:?}", icon_data.0));
+                    log_info(&format!("Icon loaded successfully for: {:?}", self.path));
                     icon_data
                 }
                 Err(e) => {
                     log_error(&format!(
-                        "Failed to get file icon for {:?}: {}. Using default.",
-                        path, e
+                        "Failed to lazy load file icon for {:?}: {}. Using default.",
+                        self.path, e
                     ));
-                    // アイコン取得に失敗しちゃった…(´・ω・｀) とりあえず空っぽのアイコン情報を返すね。
+                    // アイコン取得に失敗した場合、
+                    // 毎回失敗しないように、空のアイコン情報をキャッシュしておく
                     (BITMAPINFO::default(), Vec::new())
                 }
             }
-        };
-
-        IconInfo { path, name, icon }
+        })
     }
-
     /// この IconInfo が示すパスを実行（開く）します。
     /// `open::that` を使って、関連付けられたアプリケーションでファイルやフォルダを開くよ！
     pub fn execute(&self) {
@@ -95,16 +108,15 @@ mod tests {
         writeln!(file, "じぇみにだよ！").unwrap(); // ちょっとだけ書き込んでみる！
 
         // --- 実行してみるよっ！ ---
-        let icon_info = IconInfo::new(file_path.clone());
+        let mut icon_info = IconInfo::new(file_path.clone());
 
         // --- 確認するよっ！ ---
         assert_eq!(icon_info.path, file_path);
         assert_eq!(icon_info.name, "test_file"); // 拡張子なしの名前になってるかな？
-        // アイコンデータが空っぽじゃないことを確認！ (ui_shell がちゃんと何か返してればOK！)
-        assert!(
-            !icon_info.icon.1.is_empty(),
-            "アイコンデータが空っぽだよ！＞＜"
-        );
+
+        // get_or_load_icon を呼んで、アイコンデータが空っぽじゃないことを確認
+        let icon_data = icon_info.get_or_load_icon();
+        assert!(!icon_data.1.is_empty(), "アイコンデータが空っぽだよ！＞＜");
 
         // --- お片付け ---
         dir.close().unwrap(); // 一時ディレクトリを消すよ！
@@ -117,14 +129,12 @@ mod tests {
         let file_path = dir.path().join("test_file_no_ext"); // 拡張子なしのファイル！
         File::create(&file_path).unwrap();
 
-        let icon_info = IconInfo::new(file_path.clone());
+        let mut icon_info = IconInfo::new(file_path.clone());
 
         assert_eq!(icon_info.path, file_path);
         assert_eq!(icon_info.name, "test_file_no_ext"); // そのままの名前になってるかな？
-        assert!(
-            !icon_info.icon.1.is_empty(),
-            "アイコンデータが空っぽだよ！＞＜"
-        );
+        let icon_data = icon_info.get_or_load_icon();
+        assert!(!icon_data.1.is_empty(), "アイコンデータが空っぽだよ！＞＜");
 
         dir.close().unwrap();
     }

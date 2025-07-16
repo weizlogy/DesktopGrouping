@@ -1,15 +1,13 @@
-use ab_glyph::{point, Font, FontRef, GlyphId, PxScale, ScaleFont};
-use tiny_skia::{
-    Color, Paint, Pixmap, PixmapPaint, PremultipliedColorU8, Rect, Transform,
-};
-use windows::Win32::Graphics::Gdi::{BITMAPINFO, BI_RGB};
+use ab_glyph::{Font, FontRef, GlyphId, PxScale, ScaleFont, point};
+use tiny_skia::{Paint, Pixmap, PixmapPaint, PremultipliedColorU8, Rect, Transform};
+use windows::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFO};
 
 use super::layout::calculate_text_width;
 
 /// アイコンの描画に失敗しちゃった時に、代わりに表示するプレースホルダー（仮の印）を描画するよ！
 fn draw_placeholder_icon(pixmap: &mut Pixmap, x: u32, y: u32, width: u32, height: u32) {
     let rect = Rect::from_xywh(x as f32, y as f32, width as f32, height as f32)
-      .unwrap_or_else(|| Rect::from_xywh(x as f32, y as f32, 1.0, 1.0).unwrap());
+        .unwrap_or_else(|| Rect::from_xywh(x as f32, y as f32, 1.0, 1.0).unwrap());
     let mut paint = Paint::default();
     paint.set_color_rgba8(0xFF, 0x00, 0x00, 0xAA);
     paint.anti_alias = true;
@@ -31,62 +29,77 @@ pub fn draw_icon(pixmap: &mut Pixmap, icon_info: &BITMAPINFO, pixel_data: &[u8],
     let is_top_down = header.biHeight < 0;
     let bpp = header.biBitCount; // Bits per pixel
 
-    if width == 0 || height == 0 || (bpp != 32 && bpp != 24) || header.biCompression != BI_RGB.0 as u32 {
-      // プレースホルダーを描画 (幅・高さが0の場合も考慮)
-      draw_placeholder_icon(pixmap, x, y, width.max(1), height.max(1));
-      return;
+    if width == 0
+        || height == 0
+        || (bpp != 32 && bpp != 24)
+        || header.biCompression != BI_RGB.0 as u32
+    {
+        // プレースホルダーを描画 (幅・高さが0の場合も考慮)
+        draw_placeholder_icon(pixmap, x, y, width.max(1), height.max(1));
+        return;
     }
 
     // --- アイコン用の一時的な Pixmap を作成 ---
     let mut icon_pixmap = match Pixmap::new(width, height) {
-      Some(pm) => pm,
-      None => {
-        draw_placeholder_icon(pixmap, x, y, width.max(1), height.max(1));
-        return;
-      }
+        Some(pm) => pm,
+        None => {
+            draw_placeholder_icon(pixmap, x, y, width.max(1), height.max(1));
+            return;
+        }
     };
-    
+
     let bytes_per_pixel = (bpp / 8) as usize;
     let stride = ((width as usize * bytes_per_pixel + 3) & !3) as u32;
     let expected_data_size = (stride * height) as usize;
 
     if pixel_data.len() < expected_data_size {
-      draw_placeholder_icon(pixmap, x, y, width.max(1), height.max(1));
-      return;
+        draw_placeholder_icon(pixmap, x, y, width.max(1), height.max(1));
+        return;
     }
 
     let mut icon_pixmap_mut = icon_pixmap.as_mut(); // PixmapMut を取得
     for y_dest in 0..height {
-      for x_dest in 0..width {
-        let src_row_index = if is_top_down {
-          y_dest
-        } else {
-          height - 1 - y_dest
-        };
-        let src_offset = (src_row_index * stride + x_dest * bytes_per_pixel as u32) as usize;
+        for x_dest in 0..width {
+            let src_row_index = if is_top_down {
+                y_dest
+            } else {
+                height - 1 - y_dest
+            };
+            let src_offset = (src_row_index * stride + x_dest * bytes_per_pixel as u32) as usize;
 
-        if src_offset + bytes_per_pixel > pixel_data.len() {
-          continue;
+            if src_offset + bytes_per_pixel > pixel_data.len() {
+                continue;
+            }
+
+            // スライスから直接読み取る
+            let src_pixel_bytes = &pixel_data[src_offset..src_offset + bytes_per_pixel];
+
+            let b = src_pixel_bytes[0];
+            let g = src_pixel_bytes[1];
+            let r = src_pixel_bytes[2];
+            let a = if bytes_per_pixel == 4 {
+                src_pixel_bytes[3]
+            } else {
+                255
+            };
+
+            if let Some(color) = PremultipliedColorU8::from_rgba(r, g, b, a) {
+                icon_pixmap_mut.pixels_mut()[(y_dest * width + x_dest) as usize] = color; // 直接インデックスアクセス
+            }
         }
-
-        // スライスから直接読み取る
-        let src_pixel_bytes = &pixel_data[src_offset..src_offset + bytes_per_pixel];
-
-        let b = src_pixel_bytes[0];
-        let g = src_pixel_bytes[1];
-        let r = src_pixel_bytes[2];
-        let a = if bytes_per_pixel == 4 { src_pixel_bytes[3] } else { 255 };
-
-        if let Some(color) = PremultipliedColorU8::from_rgba(r, g, b, a) {
-          icon_pixmap_mut.pixels_mut()[ (y_dest * width + x_dest) as usize ] = color; // 直接インデックスアクセス
-        }
-      }
     }
 
     // --- アイコン本体の描画 ---
     let mut paint = PixmapPaint::default();
     paint.quality = tiny_skia::FilterQuality::Bicubic;
-    pixmap.draw_pixmap(x as i32, y as i32, icon_pixmap.as_ref(), &paint, Transform::identity(), None);
+    pixmap.draw_pixmap(
+        x as i32,
+        y as i32,
+        icon_pixmap.as_ref(),
+        &paint,
+        Transform::identity(),
+        None,
+    );
 }
 
 /// 指定されたテキストを、いい感じに中央揃えして、ピクセルマップに描画するよ！
@@ -103,7 +116,7 @@ pub fn draw_text(
     startx: f32,
     starty: f32,
     max_width: f32,
-    text_height: f32, // text_height は今のところ使わないけど、将来のために残しておくよ！
+    _text_height: f32, // text_height は今のところ使わないけど、将来のために残しておくよ！
 ) {
     let scale = PxScale::from(text_font_size);
     let scaled_font = font.as_scaled(scale);
@@ -125,12 +138,16 @@ pub fn draw_text(
 
             for (i, c) in text.char_indices() {
                 let glyph = scaled_font.scaled_glyph(c);
-                if glyph.id.0 == 0 { continue; }
+                if glyph.id.0 == 0 {
+                    continue;
+                }
                 let mut char_width = scaled_font.h_advance(glyph.id);
                 if let Some(last_id) = last_glyph_id {
                     char_width += scaled_font.kern(last_id, glyph.id);
                 }
-                if current_width + char_width > target_width { break; }
+                if current_width + char_width > target_width {
+                    break;
+                }
                 current_width += char_width;
                 last_glyph_id = Some(glyph.id);
                 truncated_len = i + c.len_utf8();
@@ -143,7 +160,7 @@ pub fn draw_text(
     // --- 描画開始位置の中央揃え計算 ---
     let center_x = startx + max_width / 2.0;
     let adjusted_start_x = center_x - final_text_width / 2.0;
-    
+
     // --- 垂直位置の計算 ---
     // starty をベースラインとして扱うよ。
     // ascent() はベースラインから文字の上端までの距離。これを加えることで、文字の上端がだいたい starty に揃うようになるんだ。
@@ -182,37 +199,50 @@ pub fn draw_text(
             // グリフ用の一時的な Pixmap を作成 (初期状態は透明)
             let mut glyph_pixmap = match Pixmap::new(glyph_width, glyph_height) {
                 Some(pm) => pm,
-                None => { // 作成失敗
+                None => {
+                    // 作成失敗
                     caret.x += scaled_font.h_advance(glyph_id);
                     last_glyph_id = Some(glyph_id);
                     continue;
                 }
             };
-            
-            // グリフのアウトラインを一時的な Pixmap に描画 (黒テキスト、アルファ適用)
+
+            // グリフのアウトラインを一時的な Pixmap に描画
             outline.draw(|dx, dy, coverage| {
-                if coverage > 0.0 {
-                    let alpha = (coverage * 255.0).min(255.0) as u8;
-                    let index = dy * glyph_width + dx;
-                    if let Some(color) = PremultipliedColorU8::from_rgba(0, 0, 0, alpha) {
-                        if let Some(pixel) = glyph_pixmap.pixels_mut().get_mut(index as usize) {
-                            *pixel = color;
-                        }
-                    }
+                // coverageはグリフのアウトラインのアンチエイリアシングのためのアルファ値(0.0-1.0)です。
+              if coverage > 0.0 {
+                // テキスト自体のアルファ値と、グリフのアンチエイリアシング用アルファ(coverage)を掛け合わせます。
+                let final_alpha = coverage; // * text_color.alpha();
+                let index = dy * glyph_width + dx;
+
+                // `PremultipliedColorU8::from_rgba` は u8 値 ([0, 255]) を受け取ります。
+                // そのため、まず f32 値 ([0.0, 1.0]) の色成分を u8 に変換します。
+                let r_u8 = 0; // (text_color.red() * 255.0) as u8; // 黒に変更
+                let g_u8 = 0; // (text_color.green() * 255.0) as u8; // 黒に変更
+                let b_u8 = 0; // (text_color.blue() * 255.0) as u8; // 黒に変更
+                let a_u8 = (final_alpha * 255.0) as u8;
+
+                // `from_rgba` は非事前乗算の u8 値を受け取り、内部で正しく事前乗算を行って
+                // `PremultipliedColorU8` インスタンスを生成します。
+                if let Some(color) = PremultipliedColorU8::from_rgba(r_u8, g_u8, b_u8, a_u8) {
+                  if let Some(pixel) = glyph_pixmap.pixels_mut().get_mut(index as usize) {
+                    *pixel = color;
+                  }
                 }
+              }
             });
 
             // 一時的なグリフ Pixmap をメインの Pixmap に描画
             pixmap.draw_pixmap(
-                (caret.x + bounds.min.x) as i32,
-                (caret.y + bounds.min.y) as i32,
+                (caret.x + bounds.min.x.ceil()) as i32,
+                (caret.y + bounds.min.y.ceil()) as i32,
                 glyph_pixmap.as_ref(),
                 &PixmapPaint::default(),
                 Transform::identity(),
                 None,
             );
         }
-        
+
         caret.x += scaled_font.h_advance(glyph_id);
         last_glyph_id = Some(glyph_id);
     }

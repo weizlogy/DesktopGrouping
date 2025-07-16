@@ -422,24 +422,33 @@ impl MyGraphics {
     let mut buffer =
       self.soft_surface.buffer_mut().expect("Failed to get buffer");
 
-    // Pixmap のデータ (RGBA) を softbuffer のバッファ (ARGB or XRGB) にコピー
-    // softbuffer はターゲットプラットフォームに応じて最適なフォーマットを選択する
-    // ここでは一般的な BGRA (Windows) を想定してコピーするのではなく、
-    // RGBA -> u32 (0xAARRGGBB or 0xFFRRGGBB) への変換を行う
+    // Pixmap のデータ (事前乗算済みアルファ RGBA) を softbuffer のバッファ (非乗算アルファ ARGB) にコピーします。
     let pixmap_data = self.pixmap.data();
     for (i, pixel) in buffer.iter_mut().enumerate() {
-      let r = pixmap_data[i * 4 + 0];
-      let g = pixmap_data[i * 4 + 1];
-      let b = pixmap_data[i * 4 + 2];
-      let a = pixmap_data[i * 4 + 3]; // アルファ値も取得
+      // tiny_skia は事前乗算済みアルファ (premultiplied alpha) を使用します。
+      let r_p = pixmap_data[i * 4 + 0];
+      let g_p = pixmap_data[i * 4 + 1];
+      let b_p = pixmap_data[i * 4 + 2];
+      let a = pixmap_data[i * 4 + 3];
 
-      // Premultiplied Alpha を考慮しない単純な変換 (必要なら調整)
-      // softbuffer が期待する形式 (例: 0xAARRGGBB) に合わせる
-      // 多くの場合、ホストのネイティブエンディアンに依存する
-      // ここでは一般的なリトルエンディアンの ARGB (0xAARRGGBB) を想定
+      // softbuffer は非乗算アルファ (straight alpha) を期待するため、色を元に戻す必要があります。
+      // これを怠ると、半透明の白が灰色で描画されるなどの問題が発生します。
+      let (r, g, b) = if a > 0 {
+        // a で割る前に r_p, g_p, b_p を u32 にキャスト
+        let r_u32 = (r_p as u32 * 255) / a as u32;  
+        let g_u32 = (g_p as u32 * 255) / a as u32;
+        let b_u32 = (b_p as u32 * 255) / a as u32;
+        // clamp で 0-255 の範囲に収める
+        let r_u8 = r_u32.clamp(0, 255) as u8;
+        let g_u8 = g_u32.clamp(0, 255) as u8;
+        let b_u8 = b_u32.clamp(0, 255) as u8;
+        (r_u8, g_u8, b_u8)
+      } else {
+          (0, 0, 0) // アルファが 0 なら RGB も 0 に
+      };
+
+      // softbuffer が期待する u32 (0xAARRGGBB) 形式に変換してピクセルを書き込みます。
       *pixel = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
-      // もし XRGB (アルファ無視) なら:
-      // *pixel = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
     }
 
     buffer.present().expect("Failed to commit surface");
