@@ -114,28 +114,28 @@ pub fn get_item_rect_f32(
 ///
 /// * `tiny_skia::Color` - 背景色に対して見やすいテキスト色（黒または白）。
 pub fn get_contrasting_text_color(bg_color: Color) -> Color {
-  // sRGBの色成分を[0, 1]の範囲の線形値に変換します。
-  // tiny_skia::Color の .red() などは既に [0.0, 1.0] の f32 を返すので、それを使います。
-  // See: https://www.w3.org/TR/WCAG20-TECHS/G17.html#G17-procedure
-  let srgb_to_linear = |c_linear: f32| {
-    if c_linear <= 0.03928 {
-      c_linear / 12.92
+    // sRGBの色成分を[0, 1]の範囲の線形値に変換します。
+    // tiny_skia::Color の .red() などは既に [0.0, 1.0] の f32 を返すので、それを使います。
+    // See: https://www.w3.org/TR/WCAG20-TECHS/G17.html#G17-procedure
+    let srgb_to_linear = |c_linear: f32| {
+        if c_linear <= 0.03928 {
+            c_linear / 12.92
+        } else {
+            ((c_linear + 0.055) / 1.055).powf(2.4)
+        }
+    };
+
+    let r = srgb_to_linear(bg_color.red());
+    let g = srgb_to_linear(bg_color.green());
+    let b = srgb_to_linear(bg_color.blue());
+
+    // 相対輝度 (Luminance) を計算します。
+    let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+    // 輝度のしきい値に基づいて、適切なテキスト色を返します。
+    if luminance > 0.4 {
+        Color::from_rgba8(0, 0, 0, 255) // 明るい背景には黒いテキスト
     } else {
-      ((c_linear + 0.055) / 1.055).powf(2.4)
+        Color::from_rgba8(255, 255, 255, 255) // 暗い背景には白いテキスト
     }
-  };
-
-  let r = srgb_to_linear(bg_color.red());
-  let g = srgb_to_linear(bg_color.green());
-  let b = srgb_to_linear(bg_color.blue());
-
-  // 相対輝度 (Luminance) を計算します。
-  let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-  // 輝度のしきい値に基づいて、適切なテキスト色を返します。
-  if luminance > 0.4 {
-    Color::from_rgba8(0, 0, 0, 255) // 明るい背景には黒いテキスト
-  } else {
-    Color::from_rgba8(255, 255, 255, 255) // 暗い背景には白いテキスト
-  }
 }

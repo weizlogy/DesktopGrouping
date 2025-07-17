@@ -1,9 +1,10 @@
 use std::{num::NonZeroU32, rc::Rc};
 
-use ab_glyph::{FontRef};
+use ab_glyph::FontRef;
 use softbuffer::{Context, Surface as SoftSurface};
 use tiny_skia::{
-    Color, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, Rect, Shader, SpreadMode, Stroke, Transform,
+    Color, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, Rect, Shader,
+    SpreadMode, Stroke, Transform,
 };
 use windows::Win32::Graphics::Gdi::BITMAPINFO;
 use winit::{dpi::PhysicalSize, window::Window};
@@ -13,7 +14,10 @@ use crate::logger::*;
 use super::{
     colors::{self, parse_color},
     drawing,
-    layout::{self, BASE_ADJUST_SELECT_RECT, BASE_LAYOUT_ICON_SIZE, BASE_PADDING, BASE_PADDING_UNDER_ICON, BASE_TEXT_FONT_SIZE, BASE_TEXT_HEIGHT},
+    layout::{
+        self, BASE_ADJUST_SELECT_RECT, BASE_LAYOUT_ICON_SIZE, BASE_PADDING,
+        BASE_PADDING_UNDER_ICON, BASE_TEXT_FONT_SIZE, BASE_TEXT_HEIGHT,
+    },
 };
 
 // --- 枠線定数 ---
@@ -27,13 +31,13 @@ pub struct MyGraphics {
     soft_surface: SoftSurface<Rc<Window>, Rc<Window>>,
     pixmap: Pixmap,
     // --- レイアウト情報 ---
-    width: u32,          // ピクセルマップの幅 (ウィンドウの内部幅と同じだよ！)
-    height: u32,         // ピクセルマップの高さ (ウィンドウの内部高さと同じだよ！)
-    scale_factor: f64,   // DPIスケーリングとかのための拡大率だよ！
+    width: u32,           // ピクセルマップの幅 (ウィンドウの内部幅と同じだよ！)
+    height: u32,          // ピクセルマップの高さ (ウィンドウの内部高さと同じだよ！)
+    scale_factor: f64,    // DPIスケーリングとかのための拡大率だよ！
     items_per_row: usize, // 1行に表示できるアイコンの数だよ。ウィンドウの幅によって変わるんだ。
     max_text_width: f32, // アイコンの下に表示するテキストの、許容される最大の幅だよ。これを超えると省略されちゃう！
-    item_width: f32,    // グリッドレイアウトの1アイテムあたりの幅だよ (テキストの最大幅 + 余白)。
-    item_height: f32,   // グリッドレイアウトの1アイテムあたりの高さだよ (アイコンの高さ + テキストの高さ + 余白)。
+    item_width: f32,     // グリッドレイアウトの1アイテムあたりの幅だよ (テキストの最大幅 + 余白)。
+    item_height: f32, // グリッドレイアウトの1アイテムあたりの高さだよ (アイコンの高さ + テキストの高さ + 余白)。
     // --- スケーリングされたレイアウト値だよ！ ---
     padding: f32,
     layout_icon_size: f32,
@@ -44,86 +48,91 @@ pub struct MyGraphics {
     // border_width は今のところ固定だけど、もしスケーリングしたくなったらここに追加するんだ！
 
     // --- フォント ---
-    font: FontRef<'static>, // フォントデータを保持
+    font: FontRef<'static>,           // フォントデータを保持
     background_paint: Paint<'static>, // 背景色用 Paint
-    border_paint: Paint<'static>,   // 枠線色用 Paint
-    border_stroke: Stroke,          // 枠線の太さなど
+    border_paint: Paint<'static>,     // 枠線色用 Paint
+    border_stroke: Stroke,            // 枠線の太さなど
 }
 
 impl MyGraphics {
-  /// 新しい `MyGraphics` インスタンスを作るよ！
-  ///
-  /// ウィンドウハンドル (`window`) と、初期の背景色・枠線色、それから初期の拡大率 (`initial_scale_factor`) をもらって、
-  /// 描画に必要なもの (softbufferのサーフェス、ピクセルマップ、フォント、レイアウト情報など) を準備するんだ。
-  ///
-  /// 色の文字列がもしパースできなかったら、優しいデフォルト色にしてくれるから安心してね！(<em>´ω｀</em>)
-  pub fn new(window: &Rc<Window>, bg_color_str: &str, border_color_str: &str, initial_scale_factor: f64) -> Self {
-    let initial_size = window.inner_size();
-    let width = initial_size.width;
-    let height = initial_size.height;
+    /// 新しい `MyGraphics` インスタンスを作るよ！
+    ///
+    /// ウィンドウハンドル (`window`) と、初期の背景色・枠線色、それから初期の拡大率 (`initial_scale_factor`) をもらって、
+    /// 描画に必要なもの (softbufferのサーフェス、ピクセルマップ、フォント、レイアウト情報など) を準備するんだ。
+    ///
+    /// 色の文字列がもしパースできなかったら、優しいデフォルト色にしてくれるから安心してね！(<em>´ω｀</em>)
+    pub fn new(
+        window: &Rc<Window>,
+        bg_color_str: &str,
+        border_color_str: &str,
+        initial_scale_factor: f64,
+    ) -> Self {
+        let initial_size = window.inner_size();
+        let width = initial_size.width;
+        let height = initial_size.height;
 
-    let context =
-      Context::new(window.clone()).expect("Failed to create context");
-    let mut soft_surface =
-      SoftSurface::new(&context, window.clone()).expect("Failed to create surface");
+        let context = Context::new(window.clone()).expect("Failed to create context");
+        let mut soft_surface =
+            SoftSurface::new(&context, window.clone()).expect("Failed to create surface");
 
-    // resize を呼ぶ前に Pixmap を初期化
-    let pixmap =
-      Pixmap::new(width, height)
-        .expect("Failed to create initial Pixmap");
-    // soft_surface のリサイズも試みる
-    soft_surface.resize(
-      NonZeroU32::new(width).unwrap(),
-      NonZeroU32::new(height).unwrap()
-    ).expect("Failed to resize surface");
+        // resize を呼ぶ前に Pixmap を初期化
+        let pixmap = Pixmap::new(width, height).expect("Failed to create initial Pixmap");
+        // soft_surface のリサイズも試みる
+        soft_surface
+            .resize(
+                NonZeroU32::new(width).unwrap(),
+                NonZeroU32::new(height).unwrap(),
+            )
+            .expect("Failed to resize surface");
 
-    // フォントをロードして保持
-    let font_data = include_bytes!("../../resource/NotoSansJP-Medium.ttf");
-    let font = FontRef::try_from_slice(font_data).expect("Failed to load font");
+        // フォントをロードして保持
+        let font_data = include_bytes!("../../resource/NotoSansJP-Medium.ttf");
+        let font = FontRef::try_from_slice(font_data).expect("Failed to load font");
 
-    // 色をパース、失敗したらデフォルト色にフォールバック
-    let bg_color =
-      parse_color(bg_color_str).unwrap_or_else(
-        || Color::from_rgba8(255, 255, 255, 153)); // Default: #FFFFFF99
-    let border_color =
-      parse_color(border_color_str).unwrap_or_else(
-      || Color::from_rgba8(0, 0, 0, 255)); // Default: #000000FF
+        // 色をパース、失敗したらデフォルト色にフォールバック
+        let bg_color =
+            parse_color(bg_color_str).unwrap_or_else(|| Color::from_rgba8(255, 255, 255, 153)); // Default: #FFFFFF99
+        let border_color =
+            parse_color(border_color_str).unwrap_or_else(|| Color::from_rgba8(0, 0, 0, 255)); // Default: #000000FF
 
-    let mut background_paint = Paint::default();
-    background_paint.set_color(bg_color);
-    background_paint.anti_alias = true; // お好みで
+        let mut background_paint = Paint::default();
+        background_paint.set_color(bg_color);
+        background_paint.anti_alias = true; // お好みで
 
-    let mut border_paint = Paint::default();
-    border_paint.set_color(border_color);
-    border_paint.anti_alias = true;
+        let mut border_paint = Paint::default();
+        border_paint.set_color(border_color);
+        border_paint.anti_alias = true;
 
-    let border_stroke = Stroke { width: BORDER_WIDTH, ..Default::default() }; // 枠線の太さなど
+        let border_stroke = Stroke {
+            width: BORDER_WIDTH,
+            ..Default::default()
+        }; // 枠線の太さなど
 
-    let mut graphics = MyGraphics {
-      soft_surface,
-      pixmap,
-      width,
-      height,
-      scale_factor: initial_scale_factor,
-      // レイアウト関連のフィールドは update_scaled_layout_values で初期化されるよ！
-      items_per_row: 0,
-      max_text_width: 0.0,
-      item_width: 0.0,
-      item_height: 0.0,
-      padding: 0.0,
-      layout_icon_size: 0.0,
-      padding_under_icon: 0.0,
-      text_height: 0.0,
-      text_font_size: 0.0,
-      adjust_select_rect: 0.0,
-      font, // フォントを保持
-      background_paint,
-      border_paint,
-      border_stroke,
-    };
-    graphics.update_scaled_layout_values(); // スケーリングされたレイアウト値を計算して設定！
-    return graphics;
-  }
+        let mut graphics = MyGraphics {
+            soft_surface,
+            pixmap,
+            width,
+            height,
+            scale_factor: initial_scale_factor,
+            // レイアウト関連のフィールドは update_scaled_layout_values で初期化されるよ！
+            items_per_row: 0,
+            max_text_width: 0.0,
+            item_width: 0.0,
+            item_height: 0.0,
+            padding: 0.0,
+            layout_icon_size: 0.0,
+            padding_under_icon: 0.0,
+            text_height: 0.0,
+            text_font_size: 0.0,
+            adjust_select_rect: 0.0,
+            font, // フォントを保持
+            background_paint,
+            border_paint,
+            border_stroke,
+        };
+        graphics.update_scaled_layout_values(); // スケーリングされたレイアウト値を計算して設定！
+        return graphics;
+    }
 
     /// スケーリングされたレイアウト関連の値を計算して、構造体のフィールドを更新するよ！
     /// scale_factor が変わった時とか、ウィンドウサイズが変わった時に呼び出すんだ。
@@ -165,69 +174,75 @@ impl MyGraphics {
         self.border_paint.set_color(clamped_color);
     }
 
-  /// 今設定されてる背景色を取得するよ！
-  /// `Paint` オブジェクトが直接色を返してくれないから、中の `Shader` を見て色を取り出すんだ。
-  /// もし万が一、想定外のシェーダーだったら、透明色を返してログに警告を出すようになってるよ。
-  pub fn get_background_color(&self) -> Color {
-    // self.background_paint.color // <- これはエラーになる！
-    // shader フィールドから色を取得する
-    match self.background_paint.shader {
-        // shader が SolidColor の場合、その中の color を返す
-        Shader::SolidColor(color) => color,
-        // SolidColor 以外は想定していないが、フォールバックとして透明色を返す
-        _ => {
-            // 本来ここに来ることはないはずなので警告ログを出す (logger クレートの log_warn を使うよ！)
-            log_warn("Background paint shader is not SolidColor!");
-            Color::TRANSPARENT // または適切なデフォルト値
+    /// 今設定されてる背景色を取得するよ！
+    /// `Paint` オブジェクトが直接色を返してくれないから、中の `Shader` を見て色を取り出すんだ。
+    /// もし万が一、想定外のシェーダーだったら、透明色を返してログに警告を出すようになってるよ。
+    pub fn get_background_color(&self) -> Color {
+        // self.background_paint.color // <- これはエラーになる！
+        // shader フィールドから色を取得する
+        match self.background_paint.shader {
+            // shader が SolidColor の場合、その中の color を返す
+            Shader::SolidColor(color) => color,
+            // SolidColor 以外は想定していないが、フォールバックとして透明色を返す
+            _ => {
+                // 本来ここに来ることはないはずなので警告ログを出す (logger クレートの log_warn を使うよ！)
+                log_warn("Background paint shader is not SolidColor!");
+                Color::TRANSPARENT // または適切なデフォルト値
+            }
         }
     }
-  }
 
-  /// 今設定されてる枠線色を取得するよ！ (設定保存用とかに使うんだ)
-  /// こっちも `Paint` の中の `Shader` を見て色を取り出すよ。
-  pub fn get_border_color(&self) -> Color {
-    // self.border_paint.color // <- これもエラーになる！
-    // shader フィールドから色を取得する
-    match self.border_paint.shader {
-        // shader が SolidColor の場合、その中の color を返す
-        Shader::SolidColor(color) => color,
-        // SolidColor 以外は想定していないが、フォールバックとして黒色を返す
-        _ => {
-            // 本来ここに来ることはないはずなので警告ログを出す (logger クレートの log_warn を使うよ！)
-            log_warn("Border paint shader is not SolidColor!");
-            Color::BLACK // または適切なデフォルト値
+    /// 今設定されてる枠線色を取得するよ！ (設定保存用とかに使うんだ)
+    /// こっちも `Paint` の中の `Shader` を見て色を取り出すよ。
+    pub fn get_border_color(&self) -> Color {
+        // self.border_paint.color // <- これもエラーになる！
+        // shader フィールドから色を取得する
+        match self.border_paint.shader {
+            // shader が SolidColor の場合、その中の color を返す
+            Shader::SolidColor(color) => color,
+            // SolidColor 以外は想定していないが、フォールバックとして黒色を返す
+            _ => {
+                // 本来ここに来ることはないはずなので警告ログを出す (logger クレートの log_warn を使うよ！)
+                log_warn("Border paint shader is not SolidColor!");
+                Color::BLACK // または適切なデフォルト値
+            }
         }
     }
-  }
 
-  /// ウィンドウのサイズが変更された時に呼び出されるよ！
-  ///
-  /// 新しいサイズ (`new_size`) に合わせて、内部の `soft_surface` と `pixmap` をリサイズして、
-  /// アイコンのグリッドレイアウトも再計算するんだ。これで表示が崩れないようにするんだね！
-  pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
-    self.width = new_size.width;
-    self.height = new_size.height;
+    /// ウィンドウのサイズが変更された時に呼び出されるよ！
+    ///
+    /// 新しいサイズ (`new_size`) に合わせて、内部の `soft_surface` と `pixmap` をリサイズして、
+    /// アイコンのグリッドレイアウトも再計算するんだ。これで表示が崩れないようにするんだね！
+    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        self.width = new_size.width;
+        self.height = new_size.height;
 
-    self.soft_surface.resize(
-      NonZeroU32::new(self.width).unwrap(),
-      NonZeroU32::new(self.height).unwrap()).expect("Failed to resize surface");
-    self.pixmap = Pixmap::new(self.width, self.height)
-      .expect("Failed to create initial Pixmap");
+        self.soft_surface
+            .resize(
+                NonZeroU32::new(self.width).unwrap(),
+                NonZeroU32::new(self.height).unwrap(),
+            )
+            .expect("Failed to resize surface");
+        self.pixmap =
+            Pixmap::new(self.width, self.height).expect("Failed to create initial Pixmap");
 
-    // スケーリングされたレイアウト値を再計算！
-    self.update_scaled_layout_values();
-  }
-
-  /// 拡大率 (`scale_factor`) が変わった時に呼び出すよ！
-  /// 新しい拡大率を覚えて、レイアウトを再計算するんだ。
-  pub fn update_scale_factor(&mut self, new_scale_factor: f64) {
-    // 拡大率が本当に変わったかチェック！ちょっとだけ違っても再計算しないようにするよ。
-    if (self.scale_factor - new_scale_factor).abs() > f64::EPSILON {
-        log_debug(&format!("MyGraphics: Scale factor changing from {} to {}", self.scale_factor, new_scale_factor));
-        self.scale_factor = new_scale_factor;
-        self.update_scaled_layout_values(); // 新しい拡大率でレイアウト値を更新！
+        // スケーリングされたレイアウト値を再計算！
+        self.update_scaled_layout_values();
     }
-  }
+
+    /// 拡大率 (`scale_factor`) が変わった時に呼び出すよ！
+    /// 新しい拡大率を覚えて、レイアウトを再計算するんだ。
+    pub fn update_scale_factor(&mut self, new_scale_factor: f64) {
+        // 拡大率が本当に変わったかチェック！ちょっとだけ違っても再計算しないようにするよ。
+        if (self.scale_factor - new_scale_factor).abs() > f64::EPSILON {
+            log_debug(&format!(
+                "MyGraphics: Scale factor changing from {} to {}",
+                self.scale_factor, new_scale_factor
+            ));
+            self.scale_factor = new_scale_factor;
+            self.update_scaled_layout_values(); // 新しい拡大率でレイアウト値を更新！
+        }
+    }
 
     /// 描画を開始する時に呼び出すよ！
     ///
@@ -272,27 +287,28 @@ impl MyGraphics {
         }
 
         // --- 枠線描画 (MyGraphics::new で設定した border_paint と border_stroke を使う) ---
-    // stroke_rect は中心線で描画されるため、半分の太さだけ内側にオフセットする
-    let border_half_width = self.border_stroke.width / 2.0;
-    let border_rect = Rect::from_xywh(
-      border_half_width,
-      border_half_width,
-      (self.width as f32 - self.border_stroke.width).max(0.0), // 幅が負にならないように
-      (self.height as f32 - self.border_stroke.width).max(0.0), // 高さが負にならないように
-    );
+        // stroke_rect は中心線で描画されるため、半分の太さだけ内側にオフセットする
+        let border_half_width = self.border_stroke.width / 2.0;
+        let border_rect = Rect::from_xywh(
+            border_half_width,
+            border_half_width,
+            (self.width as f32 - self.border_stroke.width).max(0.0), // 幅が負にならないように
+            (self.height as f32 - self.border_stroke.width).max(0.0), // 高さが負にならないように
+        );
 
-    if let Some(valid_border_rect) = border_rect { // Rect 作成が成功した場合のみ描画
-      let path = PathBuilder::from_rect(valid_border_rect);
-      self.pixmap.stroke_path(
-        &path, // PathBuilder::from_rect が返すのは Path なので &path で参照を渡す
-        &self.border_paint, // 構造体フィールドの border_paint を使用
-        &self.border_stroke, // 構造体フィールドの border_stroke を使用
-        Transform::identity(),
-        None,
-      );
+        if let Some(valid_border_rect) = border_rect {
+            // Rect 作成が成功した場合のみ描画
+            let path = PathBuilder::from_rect(valid_border_rect);
+            self.pixmap.stroke_path(
+                &path,               // PathBuilder::from_rect が返すのは Path なので &path で参照を渡す
+                &self.border_paint,  // 構造体フィールドの border_paint を使用
+                &self.border_stroke, // 構造体フィールドの border_stroke を使用
+                Transform::identity(),
+                None,
+            );
+        }
+        // ---------------------------------------------------------
     }
-    // ---------------------------------------------------------
-  }
 
     /// グループアイコンを描画するよ！
     /// 1つのアイコンとその名前を、グリッドレイアウトに従っていい感じの位置に描画するんだ。
@@ -323,7 +339,7 @@ impl MyGraphics {
 
         // グリッドの左上の X 座標 (テキスト描画の基準)
         let grid_x = (col as f32 * self.item_width) + self.padding; // スケーリング済みの self.padding を使うよ！
-                                                                 // グリッドの左上の Y 座標 (アイコン描画の基準)
+        // グリッドの左上の Y 座標 (アイコン描画の基準)
         let grid_y = (row as f32 * self.item_height) + self.padding; // こっちも！
 
         // アイコンの描画座標 (テキストの中央に配置)
@@ -414,45 +430,46 @@ impl MyGraphics {
         );
     }
 
-  /// これまでピクセルマップに描画してきた内容を、実際にウィンドウに表示するよ！
-  ///
-  /// `soft_surface` からウィンドウのバッファを取得して、`self.pixmap` の内容をそこにコピーするんだ。
-  /// ピクセルフォーマット (RGBA とか ARGB とか) の違いも、ここで吸収してるみたいだね！
-  pub fn draw_finish(&mut self) {
-    let mut buffer =
-      self.soft_surface.buffer_mut().expect("Failed to get buffer");
+    /// これまでピクセルマップに描画してきた内容を、実際にウィンドウに表示するよ！
+    ///
+    /// `soft_surface` からウィンドウのバッファを取得して、`self.pixmap` の内容をそこにコピーするんだ。
+    /// ピクセルフォーマット (RGBA とか ARGB とか) の違いも、ここで吸収してるみたいだね！
+    pub fn draw_finish(&mut self) {
+        let mut buffer = self
+            .soft_surface
+            .buffer_mut()
+            .expect("Failed to get buffer");
 
-    // Pixmap のデータ (事前乗算済みアルファ RGBA) を softbuffer のバッファ (非乗算アルファ ARGB) にコピーします。
-    let pixmap_data = self.pixmap.data();
-    for (i, pixel) in buffer.iter_mut().enumerate() {
-      // tiny_skia は事前乗算済みアルファ (premultiplied alpha) を使用します。
-      let r_p = pixmap_data[i * 4 + 0];
-      let g_p = pixmap_data[i * 4 + 1];
-      let b_p = pixmap_data[i * 4 + 2];
-      let a = pixmap_data[i * 4 + 3];
+        // Pixmap のデータ (事前乗算済みアルファ RGBA) を softbuffer のバッファ (非乗算アルファ ARGB) にコピーします。
+        let pixmap_data = self.pixmap.data();
+        for (i, pixel) in buffer.iter_mut().enumerate() {
+            // tiny_skia は事前乗算済みアルファ (premultiplied alpha) を使用します。
+            let r_p = pixmap_data[i * 4 + 0];
+            let g_p = pixmap_data[i * 4 + 1];
+            let b_p = pixmap_data[i * 4 + 2];
+            let a = pixmap_data[i * 4 + 3];
 
-      // softbuffer は非乗算アルファ (straight alpha) を期待するため、色を元に戻す必要があります。
-      // これを怠ると、半透明の白が灰色で描画されるなどの問題が発生します。
-      let (r, g, b) = if a > 0 {
-        // a で割る前に r_p, g_p, b_p を u32 にキャスト
-        let r_u32 = (r_p as u32 * 255) / a as u32;  
-        let g_u32 = (g_p as u32 * 255) / a as u32;
-        let b_u32 = (b_p as u32 * 255) / a as u32;
-        // clamp で 0-255 の範囲に収める
-        let r_u8 = r_u32.clamp(0, 255) as u8;
-        let g_u8 = g_u32.clamp(0, 255) as u8;
-        let b_u8 = b_u32.clamp(0, 255) as u8;
-        (r_u8, g_u8, b_u8)
-      } else {
-          (0, 0, 0) // アルファが 0 なら RGB も 0 に
-      };
+            // softbuffer は非乗算アルファ (straight alpha) を期待するため、色を元に戻す必要があります。
+            let (r, g, b) = if a > 0 {
+                // a で割る前に r_p, g_p, b_p を f32 にキャスト
+                let r_u32 = (r_p as f32 * 255.0 / a as f32) as u32;
+                let g_u32 = (g_p as f32 * 255.0 / a as f32) as u32;
+                let b_u32 = (b_p as f32 * 255.0 / a as f32) as u32;
+                // clamp で 0-255 の範囲に収める
+                let r_u8 = r_u32.clamp(0, 255) as u8;
+                let g_u8 = g_u32.clamp(0, 255) as u8;
+                let b_u8 = b_u32.clamp(0, 255) as u8;
+                (r_u8, g_u8, b_u8)
+            } else {
+                (0, 0, 0) // アルファが 0 なら RGB も 0 に
+            };
 
-      // softbuffer が期待する u32 (0xAARRGGBB) 形式に変換してピクセルを書き込みます。
-      *pixel = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+            // softbuffer が期待する u32 (0xAARRGGBB) 形式に変換してピクセルを書き込みます。
+            *pixel = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+        }
+
+        buffer.present().expect("Failed to commit surface");
     }
-
-    buffer.present().expect("Failed to commit surface");
-  }
 
     /// 指定されたインデックスのアイテム全体（アイコン、テキスト、パディング）が
     /// 描画される矩形領域（相対座標、f32）を計算します。
@@ -472,7 +489,6 @@ impl MyGraphics {
             self.adjust_select_rect,
         )
     }
-
 }
 
 #[cfg(test)]

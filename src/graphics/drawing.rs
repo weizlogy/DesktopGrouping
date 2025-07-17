@@ -75,8 +75,8 @@ pub fn draw_icon(pixmap: &mut Pixmap, icon_info: &BITMAPINFO, pixel_data: &[u8],
             let src_pixel_bytes = &pixel_data[src_offset..src_offset + bytes_per_pixel];
 
             let b_p = src_pixel_bytes[0];
-            let g_p= src_pixel_bytes[1];
-            let r_p= src_pixel_bytes[2];
+            let g_p = src_pixel_bytes[1];
+            let r_p = src_pixel_bytes[2];
             let a = if bytes_per_pixel == 4 {
                 src_pixel_bytes[3]
             } else {
@@ -100,7 +100,7 @@ pub fn draw_icon(pixmap: &mut Pixmap, icon_info: &BITMAPINFO, pixel_data: &[u8],
                 (0, 0, 0) // 透明なピクセルの場合はすべてのチャンネルを 0 に
             };
             if let Some(color) = PremultipliedColorU8::from_rgba(r, g, b, a) {
-              icon_pixmap_mut.pixels_mut()[(y_dest * width + x_dest) as usize] = color; // 直接インデックスアクセス
+                icon_pixmap_mut.pixels_mut()[(y_dest * width + x_dest) as usize] = color; // 直接インデックスアクセス
             }
         }
     }
@@ -226,26 +226,26 @@ pub fn draw_text(
             // グリフのアウトラインを一時的な Pixmap に描画
             outline.draw(|dx, dy, coverage| {
                 // coverageはグリフのアウトラインのアンチエイリアシングのためのアルファ値(0.0-1.0)です。
-              if coverage > 0.0 {
-                // テキスト自体のアルファ値と、グリフのアンチエイリアシング用アルファ(coverage)を掛け合わせます。
-                let final_alpha = coverage; // * text_color.alpha();
-                let index = dy * glyph_width + dx;
+                if coverage > 0.0 {
+                    // テキスト自体のアルファ値と、グリフのアンチエイリアシング用アルファ(coverage)を掛け合わせます。
+                    let final_alpha = coverage; // * text_color.alpha();
+                    let index = dy * glyph_width + dx;
 
-                // `PremultipliedColorU8::from_rgba` は u8 値 ([0, 255]) を受け取ります。
-                // そのため、まず f32 値 ([0.0, 1.0]) の色成分を u8 に変換します。
-                let r_u8 = 0; // (text_color.red() * 255.0) as u8; // 黒に変更
-                let g_u8 = 0; // (text_color.green() * 255.0) as u8; // 黒に変更
-                let b_u8 = 0; // (text_color.blue() * 255.0) as u8; // 黒に変更
-                let a_u8 = (final_alpha * 255.0) as u8;
+                    // `PremultipliedColorU8::from_rgba` は u8 値 ([0, 255]) を受け取ります。
+                    // そのため、まず f32 値 ([0.0, 1.0]) の色成分を u8 に変換します。
+                    let r_u8 = 0; // (text_color.red() * 255.0) as u8; // 黒に変更
+                    let g_u8 = 0; // (text_color.green() * 255.0) as u8; // 黒に変更
+                    let b_u8 = 0; // (text_color.blue() * 255.0) as u8; // 黒に変更
+                    let a_u8 = (final_alpha * 255.0) as u8;
 
-                // `from_rgba` は非事前乗算の u8 値を受け取り、内部で正しく事前乗算を行って
-                // `PremultipliedColorU8` インスタンスを生成します。
-                if let Some(color) = PremultipliedColorU8::from_rgba(r_u8, g_u8, b_u8, a_u8) {
-                  if let Some(pixel) = glyph_pixmap.pixels_mut().get_mut(index as usize) {
-                    *pixel = color;
-                  }
+                    // `from_rgba` は非事前乗算の u8 値を受け取り、内部で正しく事前乗算を行って
+                    // `PremultipliedColorU8` インスタンスを生成します。
+                    if let Some(color) = PremultipliedColorU8::from_rgba(r_u8, g_u8, b_u8, a_u8) {
+                        if let Some(pixel) = glyph_pixmap.pixels_mut().get_mut(index as usize) {
+                            *pixel = color;
+                        }
+                    }
                 }
-              }
             });
 
             // 一時的なグリフ Pixmap をメインの Pixmap に描画
