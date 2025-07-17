@@ -74,17 +74,33 @@ pub fn draw_icon(pixmap: &mut Pixmap, icon_info: &BITMAPINFO, pixel_data: &[u8],
             // スライスから直接読み取る
             let src_pixel_bytes = &pixel_data[src_offset..src_offset + bytes_per_pixel];
 
-            let b = src_pixel_bytes[0];
-            let g = src_pixel_bytes[1];
-            let r = src_pixel_bytes[2];
+            let b_p = src_pixel_bytes[0];
+            let g_p= src_pixel_bytes[1];
+            let r_p= src_pixel_bytes[2];
             let a = if bytes_per_pixel == 4 {
                 src_pixel_bytes[3]
             } else {
                 255
             };
 
+            // u16 に拡張して計算
+            let r_p_u16 = r_p as u16;
+            let g_p_u16 = g_p as u16;
+            let b_p_u16 = b_p as u16;
+            let a_u16 = a as u16;
+
+            // アルファチャンネルが 0 の場合、除算を避ける
+            let (r, g, b) = if a > 0 {
+                (
+                    (r_p_u16 * a_u16 / 255) as u8,
+                    (g_p_u16 * a_u16 / 255) as u8,
+                    (b_p_u16 * a_u16 / 255) as u8,
+                )
+            } else {
+                (0, 0, 0) // 透明なピクセルの場合はすべてのチャンネルを 0 に
+            };
             if let Some(color) = PremultipliedColorU8::from_rgba(r, g, b, a) {
-                icon_pixmap_mut.pixels_mut()[(y_dest * width + x_dest) as usize] = color; // 直接インデックスアクセス
+              icon_pixmap_mut.pixels_mut()[(y_dest * width + x_dest) as usize] = color; // 直接インデックスアクセス
             }
         }
     }
