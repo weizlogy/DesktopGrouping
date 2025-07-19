@@ -324,7 +324,7 @@ impl MyGraphics {
         is_hovered: bool,
         is_executing: bool,
     ) {
-        let header = &icon_data.0.bmiHeader;
+        let _header = &icon_data.0.bmiHeader;
 
         // --- グリッドと描画座標の計算 ---
         let col = index % self.items_per_row;
