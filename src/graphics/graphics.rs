@@ -325,26 +325,22 @@ impl MyGraphics {
         is_executing: bool,
     ) {
         let header = &icon_data.0.bmiHeader;
-        // アイコンサイズは取得したものを尊重するが、レイアウト基準は 48 とする
-        let icon_width = header.biWidth.abs() as u32;
-        let icon_height = header.biHeight.abs() as u32;
-
-        if icon_width == 0 || icon_height == 0 {
-            return;
-        }
 
         // --- グリッドと描画座標の計算 ---
         let col = index % self.items_per_row;
         let row = index / self.items_per_row;
 
         // グリッドの左上の X 座標 (テキスト描画の基準)
-        let grid_x = (col as f32 * self.item_width) + self.padding; // スケーリング済みの self.padding を使うよ！
+        let grid_x = (col as f32 * self.item_width) + self.padding;
         // グリッドの左上の Y 座標 (アイコン描画の基準)
-        let grid_y = (row as f32 * self.item_height) + self.padding; // こっちも！
+        let grid_y = (row as f32 * self.item_height) + self.padding;
 
         // アイコンの描画座標 (テキストの中央に配置)
         // テキストが省略される可能性があるので、max_text_width を基準にする
-        let icon_draw_x = grid_x + (self.max_text_width / 2.0) - (icon_width as f32 / 2.0);
+        // アイコンの幅はレイアウト基準の layout_icon_size を使うことで、
+        // 取得したアイコンのサイズに依らず、常にグリッドの中央に配置されるようにする。
+        // これにより、アイコン取得失敗時 (幅が0) でも描画位置が定まる。
+        let icon_draw_x = grid_x + (self.max_text_width / 2.0) - (self.layout_icon_size / 2.0);
         let icon_draw_y = grid_y;
 
         // テキストの描画座標 (スケーリング済みの値を使うよ！)
@@ -407,14 +403,13 @@ impl MyGraphics {
         }
 
         // アイコンを描画
-        // 取得したアイコンが 48x48 でない場合、ここでリサイズ処理を追加することも可能
-        // (今回は get_file_icon で 48x48 取得を試みているので、そのまま描画)
         drawing::draw_icon(
             &mut self.pixmap,
             &icon_data.0,
             &icon_data.1,
             icon_draw_x as u32,
             icon_draw_y as u32,
+            self.layout_icon_size as u32,
         );
 
         // テキストを描画 (最大幅を指定)

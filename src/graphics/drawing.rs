@@ -19,8 +19,16 @@ fn draw_placeholder_icon(pixmap: &mut Pixmap, x: u32, y: u32, width: u32, height
 /// Windows の BITMAPINFO ヘッダー (`icon_info`) とピクセルデータ (`pixel_data`) をもらって、
 /// それを解釈して `tiny_skia` が扱える形式に変換しながら、指定された座標 (`x`, `y`) に描画するんだ。
 /// DIBフォーマットっていう、ちょっと昔ながらの形式を扱うから、色の並びとか、画像の上下が逆だったりするのに注意しながら処理してるよ！
-/// もしアイコンデータが変だったり、サポートしてない形式だったら、代わりに赤い四角 (プレースホルダー) を描画するようになってるんだ。
-pub fn draw_icon(pixmap: &mut Pixmap, icon_info: &BITMAPINFO, pixel_data: &[u8], x: u32, y: u32) {
+/// もしアイコンデータが変だったり、サポートしてない形式だったら、代わりに `expected_size` で指定された大きさの
+/// 赤い四角 (プレースホルダー) を描画するようになってるんだ。
+pub fn draw_icon(
+    pixmap: &mut Pixmap,
+    icon_info: &BITMAPINFO,
+    pixel_data: &[u8],
+    x: u32,
+    y: u32,
+    expected_size: u32,
+) {
     let header = &icon_info.bmiHeader;
     // biWidth は負の値の場合があるため絶対値を取る
     let width = header.biWidth.abs() as u32;
@@ -34,8 +42,8 @@ pub fn draw_icon(pixmap: &mut Pixmap, icon_info: &BITMAPINFO, pixel_data: &[u8],
         || (bpp != 32 && bpp != 24)
         || header.biCompression != BI_RGB.0 as u32
     {
-        // プレースホルダーを描画 (幅・高さが0の場合も考慮)
-        draw_placeholder_icon(pixmap, x, y, width.max(1), height.max(1));
+        // プレースホルダーを描画
+        draw_placeholder_icon(pixmap, x, y, expected_size, expected_size);
         return;
     }
 
@@ -43,7 +51,7 @@ pub fn draw_icon(pixmap: &mut Pixmap, icon_info: &BITMAPINFO, pixel_data: &[u8],
     let mut icon_pixmap = match Pixmap::new(width, height) {
         Some(pm) => pm,
         None => {
-            draw_placeholder_icon(pixmap, x, y, width.max(1), height.max(1));
+            draw_placeholder_icon(pixmap, x, y, expected_size, expected_size);
             return;
         }
     };
@@ -53,7 +61,7 @@ pub fn draw_icon(pixmap: &mut Pixmap, icon_info: &BITMAPINFO, pixel_data: &[u8],
     let expected_data_size = (stride * height) as usize;
 
     if pixel_data.len() < expected_data_size {
-        draw_placeholder_icon(pixmap, x, y, width.max(1), height.max(1));
+        draw_placeholder_icon(pixmap, x, y, expected_size, expected_size);
         return;
     }
 
@@ -182,6 +190,11 @@ pub fn draw_text(
     // ascent() はベースラインから文字の上端までの距離。これを加えることで、文字の上端がだいたい starty に揃うようになるんだ。
     let baseline_y = starty + scaled_font.ascent();
 
+    // --- グリフ描画時の設定を改善
+    let mut paint = PixmapPaint::default();
+    paint.quality = tiny_skia::FilterQuality::Bilinear;  // Bicubicだと時々過剰になるのでBilinearに
+    paint.blend_mode = tiny_skia::BlendMode::SourceOver;  // アルファブレンディングの改善
+
     // --- 描画ループ ---
     let mut caret = point(adjusted_start_x, baseline_y);
     let mut last_glyph_id: Option<GlyphId> = None;
@@ -225,35 +238,29 @@ pub fn draw_text(
 
             // グリフのアウトラインを一時的な Pixmap に描画
             outline.draw(|dx, dy, coverage| {
-                // coverageはグリフのアウトラインのアンチエイリアシングのためのアルファ値(0.0-1.0)です。
                 if coverage > 0.0 {
-                    // テキスト自体のアルファ値と、グリフのアンチエイリアシング用アルファ(coverage)を掛け合わせます。
-                    let final_alpha = coverage; // * text_color.alpha();
-                    let index = dy * glyph_width + dx;
+                    // 2. γ補正を少し緩めに
+                    let gamma = 1.4;  // 1.8→1.4に調整
+                    let final_alpha = coverage.powf(1.0 / gamma);
+                    
+                    // 3. 最終的な透明度をちょっと下げる
+                    let opacity = 0.85;  // 不透明度を85%に
+                    let a_u8 = ((final_alpha * 255.0 * opacity) as u8).min(255);
 
-                    // `PremultipliedColorU8::from_rgba` は u8 値 ([0, 255]) を受け取ります。
-                    // そのため、まず f32 値 ([0.0, 1.0]) の色成分を u8 に変換します。
-                    let r_u8 = 0; // (text_color.red() * 255.0) as u8; // 黒に変更
-                    let g_u8 = 0; // (text_color.green() * 255.0) as u8; // 黒に変更
-                    let b_u8 = 0; // (text_color.blue() * 255.0) as u8; // 黒に変更
-                    let a_u8 = (final_alpha * 255.0) as u8;
-
-                    // `from_rgba` は非事前乗算の u8 値を受け取り、内部で正しく事前乗算を行って
-                    // `PremultipliedColorU8` インスタンスを生成します。
-                    if let Some(color) = PremultipliedColorU8::from_rgba(r_u8, g_u8, b_u8, a_u8) {
-                        if let Some(pixel) = glyph_pixmap.pixels_mut().get_mut(index as usize) {
+                    if let Some(color) = PremultipliedColorU8::from_rgba(0, 0, 0, a_u8) {
+                        if let Some(pixel) = glyph_pixmap.pixels_mut().get_mut((dy * glyph_width + dx) as usize) {
                             *pixel = color;
                         }
                     }
                 }
             });
 
-            // 一時的なグリフ Pixmap をメインの Pixmap に描画
+            // 改善したpaintを使ってグリフを描画
             pixmap.draw_pixmap(
                 (caret.x + bounds.min.x.ceil()) as i32,
                 (caret.y + bounds.min.y.ceil()) as i32,
                 glyph_pixmap.as_ref(),
-                &PixmapPaint::default(),
+                &paint,
                 Transform::identity(),
                 None,
             );
