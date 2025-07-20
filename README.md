@@ -1,75 +1,80 @@
 # Desktop Grouping (v2.0.0) 🧹✨
 
-デスクトップのアイコンをスッキリ整理整頓してくれるアプリだよ！
-散らかったデスクトップも、これできっとピカピカになるはずっ！(๑•̀ㅂ•́)و✧
+<!-- TODO: Add a screenshot or GIF of the application in action -->
 
-## 🚀 インストール方法
+A simple and intuitive application to organize your desktop icons into groups.
 
-1.  `Desktop Grouping_2.0.0_installer.exe` をダウンロードして実行してね！
-2.  画面の指示に従って、インストール先を選んでね。(デフォルトは `C:\Program Files\Desktop Grouping` だよ！)
-3.  「スタートアップに登録する」にチェックを入れると、パソコンを起動したときに自動でアプリが起動するようになるよ！便利だね！ദ്ദി ˃ ᵕ ˂ )
-4.  「インストール」ボタンをポチッとな！👉
+デスクトップのアイコンをグループ化して整理整頓するための、シンプルで直感的なアプリケーションです。
 
-## 使い方 ✨
+## ✨ Features / 主な機能
 
-インストールが終わったら、さっそくアプリを起動してみてね！(๑•̀ㅂ•́)و✧
+- **Create Groups**: Create multiple groups on your desktop to organize icons.
+  - `Right-click` the tray icon and select `New Group`.
+- **Drag & Drop**: Easily add files and shortcuts to groups by dragging and dropping them.
+- **Launch Items**:
+  - `Left-click` an icon to launch the application or open the file.
+  - `Right-click` an icon to open its containing folder.
+- **Customization**:
+  - **Move**: `Ctrl + Drag` a group to move it.
+  - **Resize**: `Shift + Drag` a group to resize it.
+  - **Color**: Paste a hex code (e.g., `#FF000099`, `#0F0`) with `Ctrl + V` onto a group to change its background color. Use `#Random` for a random color.
+  - **Transparency**: Adjust transparency with `Ctrl + Mouse Wheel`.
+- **Delete Groups**: `Ctrl + Right-click` on an empty area of a group to delete it.
 
-1.  **アプリを起動！**
-    *   起動すると、画面右下のタスクトレイ（通知領域ってとこ！）にアプリのアイコンが表示されるよ。これで準備OK！(｀・ω・´)ゞ
+## 🚀 Installation / インストール
 
-2.  **メニューを開いてみよう！**
-    *   タスクトレイのアイコンを **右クリック** すると、メニューが出てくるよ！
-    *   `New Group`: 新しいグループを作る時に使うよ。
-    *   `Exit`: アプリを終了する時に使うよ。
+1.  Go to the **Releases** page.
+2.  Download the latest `Desktop Grouping_vX.X.X_installer.exe`.
+3.  Run the installer and follow the on-screen instructions.
 
-3.  **新しいグループを作ろっ！**
-    *   メニューから `New Group` を選ぶと、デスクトップに半透明の四角いウィンドウ（これがグループだよ！）が現れるよ。(*´▽｀*)
+---
 
-4.  **グループを動かしたり、大きさを変えたり！**
-    *   `Ctrl` キーを押しながらグループをドラッグすると、好きな場所に **移動** できるよ！슝슝=͟͟͞͞( •̀д•́)))
-    *   `Shift` キーを押しながらグループをドラッグすると、**大きさ** を変えられるよ！びよーん╰( ^o^)╮-=ﾆ=一＝三
+1.  **リリースページ**にアクセスします。
+2.  最新の `Desktop Grouping_vX.X.X_installer.exe` をダウンロードします。
+3.  インストーラーを実行し、画面の指示に従ってインストールを完了します。
 
-5.  **アイコンをグループに入れちゃお！**
-    *   デスクトップにあるファイルやショートカットを、作ったグループの上に **ドラッグ＆ドロップ** してみて！アイコンがグループの中に登録されるよ！(∩´∀｀)∩ﾜｰｲ
+## 🛠️ Building from Source / ソースからのビルド
 
-6.  **登録したアイコンを使ってみる！**
-    *   グループの中のアイコンを **左クリック** すると、そのファイルやアプリが開くよ！( `･ω･´ )ゞﾋﾞｼｯ!!
-    *   アイコンを **右クリック** すると、そのファイルがあるフォルダが開くよ！迷子にならなくて便利だね！(・∀・)ｲｲﾈ!!
+If you prefer to build the application from source, you'll need to have the Rust toolchain installed.
 
-7.  **グループの色を変えてみよっ！🎨**
-    *   好きな色に変えたい時は、色のコード（`#RGBA` か `#RGB` の形だよ。例えば `#FF000099` で半透明の赤、`#00FF00` で緑色！）をコピーして、グループの上で **ペースト** (Ctrl+V) してみて！背景色が変わるよ！✨
-    *   枠の色は、背景の色に合わせていい感じに変わるからお任せあれ！( • ̀ω•́ )✧
-    *   「どんな色がいいかな～？」って迷ったら、`#Random` って文字をコピーしてペーストしてみて！ **ランダム** な色に変わるよ！どんな色になるかはお楽しみ！(*ﾟ▽ﾟ*)ﾜｸﾜｸ
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/desktop-grouping.git
+    cd desktop-grouping
+    ```
 
-8.  **透明度も変えられるよ！**
-    *   `Ctrl` キーを押しながら **マウスホイールをくるくる** 回すと、グループの **透明度** が変わるよ！背景に合わせて見やすく調整してみてね！(｡ゝω・｡)ゞ
+2.  **Build the project:**
+    ```bash
+    cargo make build-release
+    ```
 
-## 👋 アンインストール方法
-9.  **グループを消したい時！**
-    *   グループの、アイコンが **ない** ところで `Ctrl` キーを押しながら **右クリック** すると、そのグループを削除できるよ！ ポイッ (/ ･ω･)/⌒□
+3.  The executable will be located at `target/release/desktop_grouping.exe`.
 
-## 👋 アンインストール方法
+4.  **Create installer:**
+    ```bash
+    cargo make installer
+    ```
 
-もしアンインストールしたくなったら…(´•̥ ω •̥` *)
+## 🤝 Contributing / コントリビューション
 
-*   Windows の「設定」→「アプリ」→「インストールされているアプリ」から "Desktop Grouping" を探してアンインストールする
-*   または、インストールしたフォルダ（例: `C:\Program Files\Desktop Grouping`）にある `uninstall.exe` を実行する
+Contributions are welcome! If you have a suggestion or find a bug, please open an issue to discuss it.
+Pull requests are also greatly appreciated.
 
-どっちかの方法でバイバイできるよ！👋
+コントリビューションを歓迎します！提案やバグの発見がありましたら、気軽にIssueを立てて議論してください。
+プルリクエストも大歓迎です。
 
 ## 📜 ライセンス
 
-MIT
+This project is licensed under the MIT License. See the `LICENSE` file for details.
 
-## 更新履歴 (Changelog / Descriptions)
+## 📝 Changelog
 
 ### v2.0.0
 
-Rustで再実装したことにより、レスポンスが向上しました。
-具体的には、アプリケーションの起動が速くなり、枠を移動する際の反応がスムーズになりました。以前よりも快適に使用できるようになりましたので、ぜひお試しください。
+- Rewritten in Rust for improved performance and responsiveness.
+- Faster application startup and smoother window dragging.
 
 ### v1.0.0
 
-新規作成。
-このバージョンはC# (WPF) で開発しました。初めてのデスクトップアプリケーション開発であり、試行錯誤を重ねて開発したバージョンです。
-これがDesktop Groupingの最初のバージョンです。
+- Initial release.
+- Developed with C# (WPF).
