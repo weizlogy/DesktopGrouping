@@ -4,7 +4,7 @@ use ab_glyph::FontRef;
 use softbuffer::{Context, Surface as SoftSurface};
 use tiny_skia::{
     Color, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, Rect, Shader,
-    SpreadMode, Stroke, Transform,
+    SpreadMode, Stroke, Transform, FillRule,
 };
 use windows::Win32::Graphics::Gdi::BITMAPINFO;
 use winit::{dpi::PhysicalSize, window::Window};
@@ -21,7 +21,8 @@ use super::{
 };
 
 // --- 枠線定数 ---
-const BORDER_WIDTH: f32 = 2.0; // ウィンドウの枠線の太さだよ！今は2ピクセルだね。
+const BORDER_WIDTH: f32 = 2.0; // ウィンドウの枠線の太さ
+const CORNER_RADIUS: f32 = 12.0; // ウィンドウの枠線の丸角のアール
 // ---------------------------------------------------------
 
 /// ウィンドウごとのグラフィック描画を担当する構造体だよ！
@@ -252,60 +253,95 @@ impl MyGraphics {
         // Pixmap 全体を完全に透明な色でクリアする
         self.pixmap.fill(Color::TRANSPARENT);
 
-        // --- グラデーション背景の描画 ---
+        // --- 角丸背景の描画 ---
         let base_color = self.get_background_color();
         let (start_color, end_color) = colors::create_gradient_colors(base_color);
-
-        let gradient_stops = vec![
-            GradientStop::new(0.0, start_color),
-            GradientStop::new(1.0, end_color),
-        ];
-
-        // ウィンドウの左上から右下へのグラデーション
-        let start_point = Point::from_xy(0.0, 0.0);
-        let end_point = Point::from_xy(self.width as f32, self.height as f32);
-
-        if let Some(gradient) = LinearGradient::new(
-            start_point,
-            end_point,
-            gradient_stops,
-            SpreadMode::Pad, // グラデーションの範囲外は端の色で埋める
-            Transform::identity(),
-        ) {
-            let mut gradient_paint = Paint::default();
-            gradient_paint.shader = gradient;
-            gradient_paint.anti_alias = true;
-
-            let rect = Rect::from_xywh(0.0, 0.0, self.width as f32, self.height as f32).unwrap();
-            self.pixmap
-                .fill_rect(rect, &gradient_paint, Transform::identity(), None);
-        } else {
-            // グラデーション作成に失敗した場合は、単色で塗りつぶす
-            let rect = Rect::from_xywh(0.0, 0.0, self.width as f32, self.height as f32).unwrap();
-            self.pixmap
-                .fill_rect(rect, &self.background_paint, Transform::identity(), None);
-        }
-
-        // --- 枠線描画 (MyGraphics::new で設定した border_paint と border_stroke を使う) ---
-        // stroke_rect は中心線で描画されるため、半分の太さだけ内側にオフセットする
         let border_half_width = self.border_stroke.width / 2.0;
-        let border_rect = Rect::from_xywh(
-            border_half_width,
-            border_half_width,
-            (self.width as f32 - self.border_stroke.width).max(0.0), // 幅が負にならないように
-            (self.height as f32 - self.border_stroke.width).max(0.0), // 高さが負にならないように
-        );
-
-        if let Some(valid_border_rect) = border_rect {
-            // Rect 作成が成功した場合のみ描画
-            let path = PathBuilder::from_rect(valid_border_rect);
-            self.pixmap.stroke_path(
-                &path,               // PathBuilder::from_rect が返すのは Path なので &path で参照を渡す
-                &self.border_paint,  // 構造体フィールドの border_paint を使用
-                &self.border_stroke, // 構造体フィールドの border_stroke を使用
+        let w = (self.width as f32 - self.border_stroke.width).max(0.0);
+        let h = (self.height as f32 - self.border_stroke.width).max(0.0);
+        let x = border_half_width;
+        let y = border_half_width;
+        let mut r: f32 = CORNER_RADIUS;
+        r = r.min(w / 2.0).min(h / 2.0);
+        if w > 0.0 && h > 0.0 && r > 0.0 {
+          let mut pb = PathBuilder::new();
+          pb.move_to(x + r, y);
+          pb.line_to(x + w - r, y);
+          pb.quad_to(x + w, y, x + w, y + r);
+          pb.line_to(x + w, y + h - r);
+          pb.quad_to(x + w, y + h, x + w - r, y + h);
+          pb.line_to(x + r, y + h);
+          pb.quad_to(x, y + h, x, y + h - r);
+          pb.line_to(x, y + r);
+          pb.quad_to(x, y, x + r, y);
+          pb.close();
+          if let Some(bg_path) = pb.finish() {
+            // グラデーション背景
+            if let Some(gradient) = LinearGradient::new(
+              Point::from_xy(x, y),
+              Point::from_xy(x + w, y + h),
+              vec![
+                GradientStop::new(0.0, start_color),
+                GradientStop::new(1.0, end_color),
+              ],
+              SpreadMode::Pad,
+              Transform::identity(),
+            ) {
+              let mut gradient_paint = Paint::default();
+              gradient_paint.shader = gradient;
+              gradient_paint.anti_alias = true;
+              self.pixmap.fill_path(
+                &bg_path,
+                &gradient_paint,
+                FillRule::Winding,
                 Transform::identity(),
                 None,
+              );
+            } else {
+              // グラデーション失敗時は単色
+              self.pixmap.fill_path(
+                &bg_path,
+                &self.background_paint,
+                FillRule::Winding,
+                Transform::identity(),
+                None,
+              );
+            }
+          }
+        }
+
+        // --- 枠線描画 (角丸バージョン！) ---
+        // PathBuilderで角丸矩形を自前で作るよ！
+        let border_half_width = self.border_stroke.width / 2.0;
+        let w = (self.width as f32 - self.border_stroke.width).max(0.0);
+        let h = (self.height as f32 - self.border_stroke.width).max(0.0);
+        let x = border_half_width;
+        let y = border_half_width;
+        let mut r: f32 = 10.0; // 角丸半径。お好みで8.0〜12.0にしてもOK！
+        // 角丸半径が大きすぎる場合は自動で調整
+        r = r.min(w / 2.0).min(h / 2.0);
+        if w > 0.0 && h > 0.0 && r > 0.0 {
+          let mut pb = PathBuilder::new();
+          // 右下・左下・左上・右上の順で角を回るよ！
+          pb.move_to(x + r, y);
+          pb.line_to(x + w - r, y);
+          pb.quad_to(x + w, y, x + w, y + r);
+          pb.line_to(x + w, y + h - r);
+          pb.quad_to(x + w, y + h, x + w - r, y + h);
+          pb.line_to(x + r, y + h);
+          pb.quad_to(x, y + h, x, y + h - r);
+          pb.line_to(x, y + r);
+          pb.quad_to(x, y, x + r, y);
+          pb.close();
+          if let Some(path) = pb.finish() {
+            self.pixmap.stroke_path(
+              &path,
+              &self.border_paint,
+              &self.border_stroke,
+              Transform::identity(),
+              None,
             );
+          }
         }
         // ---------------------------------------------------------
     }
