@@ -256,13 +256,30 @@ impl WindowManager {
                         child_settings.y = pos.y; // 仮想デスクトップ座標 (今まで通り！)
 
                         // --- マルチモニター情報の保存だよっ！ ---
-                        if let Some(monitor) = child_window.window.current_monitor() {
+                        // ウィンドウの左上座標 (pos) がどのモニターに属するかを判定するよ！
+                        let mut belonging_monitor = None;
+                        for monitor in child_window.window.available_monitors() {
+                            let monitor_pos = monitor.position();
+                            let monitor_size = monitor.size();
+                            let monitor_right = monitor_pos.x + monitor_size.width as i32;
+                            let monitor_bottom = monitor_pos.y + monitor_size.height as i32;
+
+                            // ウィンドウの左上 (pos.x, pos.y) がこのモニターの範囲内にあるかチェック！
+                            if pos.x >= monitor_pos.x && pos.x < monitor_right &&
+                               pos.y >= monitor_pos.y && pos.y < monitor_bottom {
+                                belonging_monitor = Some(monitor);
+                                break; // 見つかったからループを抜けるよ！
+                            }
+                        }
+
+                        // 見つかったモニターの情報を保存するよ！
+                        if let Some(monitor) = belonging_monitor {
                             child_settings.monitor_name = monitor.name(); // モニターの名前をゲット！
                             let monitor_pos = monitor.position(); // モニター自体の仮想座標
                             child_settings.monitor_x = Some(pos.x - monitor_pos.x); // モニター内での相対X座標！
                             child_settings.monitor_y = Some(pos.y - monitor_pos.y); // モニター内での相対Y座標！
                             log_debug(&format!(
-                                "Window {} on monitor '{}' (virt: {:?}, mon_pos: {:?}, rel: ({:?}, {:?}))",
+                                "Window {} belongs to monitor '{}' (virt: {:?}, mon_pos: {:?}, rel: ({:?}, {:?}))",
                                 id_str,
                                 child_settings.monitor_name.as_deref().unwrap_or("N/A"),
                                 pos,
@@ -271,13 +288,14 @@ impl WindowManager {
                                 child_settings.monitor_y
                             ));
                         } else {
-                            // あれれ？モニターが取れなかった…(´・ω・｀) 情報はクリアしとこっと。
+                            // どのモニターにも属してない！？ ちょっと珍しいケースだけど、情報はクリアしとこっと。
                             child_settings.monitor_name = None;
                             child_settings.monitor_x = None;
                             child_settings.monitor_y = None;
                             log_warn(&format!(
-                                "Window {} - Could not get current monitor.",
-                                id_str
+                                "Window {} - Top-left corner ({:?}) is not on any available monitor. Falling back to no monitor info.",
+                                id_str,
+                                pos
                             ));
                         }
                     }

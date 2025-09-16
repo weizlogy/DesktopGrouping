@@ -11,7 +11,7 @@ mod window_utils; // 便利屋さんのお家も教えてあげる！
 use arboard::Clipboard;
 use desktop_grouping::tray::tray_icon::create_tray;
 use file_drag::IconInfo;
-use logger::{log_debug, log_info, log_warn};
+use logger::{log_debug, log_info, log_warn, log_error};
 use mywindow::UserEvent;
 use std::rc::Rc;
 
@@ -137,6 +137,46 @@ fn handle_new_events_init(
                         "Window {} - Monitor '{}' not found. Falling back to virtual coordinates ({}, {}).",
                         id_str, monitor_name, child_setting.x, child_setting.y
                     ));
+
+                    // --- フォールバック位置の検証 ---
+                    let mut position_is_visible = false;
+                    for monitor in target.available_monitors() {
+                        let monitor_pos = monitor.position();
+                        let monitor_size = monitor.size();
+                        let monitor_right = monitor_pos.x + monitor_size.width as i32;
+                        let monitor_bottom = monitor_pos.y + monitor_size.height as i32;
+
+                        // ウィンドウの左上がモニター内に入っているか簡易チェック
+                        if initial_position.x >= monitor_pos.x && initial_position.x < monitor_right &&
+                           initial_position.y >= monitor_pos.y && initial_position.y < monitor_bottom {
+                            position_is_visible = true;
+                            break;
+                        }
+                    }
+
+                    // どのモニターにも表示されない位置なら、プライマリモニターに強制移動
+                    if !position_is_visible {
+                        log_warn(&format!(
+                            "Window {} - Fallback position ({}, {}) is not on any visible monitor. Moving to primary monitor.",
+                            id_str, initial_position.x, initial_position.y
+                        ));
+                        if let Some(primary_monitor) = target.primary_monitor() {
+                            let monitor_pos = primary_monitor.position();
+                            let monitor_size = primary_monitor.size();
+                            // プライマリモニターの中央あたりに配置
+                            initial_position.x = monitor_pos.x + (monitor_size.width as i32 / 4);
+                            initial_position.y = monitor_pos.y + (monitor_size.height as i32 / 4);
+                            log_info(&format!(
+                                "Window {} moved to primary monitor center at ({}, {}).",
+                                id_str, initial_position.x, initial_position.y
+                            ));
+                        } else {
+                            // プライマリモニターすら取れない最悪のケース… (0, 0) にする
+                            log_error("Could not get primary monitor. Falling back to (0, 0).");
+                            initial_position.x = 0;
+                            initial_position.y = 0;
+                        }
+                    }
                 }
             } else {
                 // モニター情報がなかったから、今まで通り仮想座標を使うね！
