@@ -358,12 +358,6 @@ fn handle_window_event(
                 }
             }
             manager.set_last_cursor_window(None); // ★カーソルが離れたことを記録
-            // ドラッグ操作中かもしれないので、ここで保存するのが安全
-            log_debug(&format!(
-                "Cursor left window {:?}. Saving settings.",
-                window_id
-            ));
-            manager.save_child_settings(window_id);
         }
         WindowEvent::Moved(..) => {} // ウィンドウ移動完了時のイベント
         _ => {}
