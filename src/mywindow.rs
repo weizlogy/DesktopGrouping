@@ -25,10 +25,11 @@ const DOUBLE_CLICK_THRESHOLD_MS: u64 = 500;
 const EXECUTION_EFFECT_DURATION_MS: u64 = 200;
 
 /// アプリケーション内で発生するカスタムイベント。
-/// 今はトレイアイコンのメニューから送られてくるイベントだけだよ！
+/// トレイメニューからのイベントと、設定読み込み完了イベントがあるよ！
 #[derive(Debug)]
 pub enum UserEvent {
     MenuEvent(tray_icon::menu::MenuEvent),
+    SettingsLoaded(HashMap<String, ChildSettings>),
 }
 
 /// ウィンドウ全体を管理する構造体。
@@ -56,6 +57,8 @@ pub struct WindowManager {
     clipboard: Option<Clipboard>,
     /// 最後にマウスカーソルがいたウィンドウのIDだよ！マウスホイールで透明度を変える時とかに使うんだ。
     last_cursor_window_id: Option<WindowId>,
+    /// 設定が変更されたかどうかを示すフラグ。true の場合、アイドル時にファイルに保存されるよ！
+    pub settings_are_dirty: bool,
 }
 
 /// ウィンドウ操作（移動/リサイズ）の状態を管理する構造体。
@@ -103,7 +106,17 @@ impl WindowManager {
             last_cursor_pos: HashMap::new(),   // カーソル位置マップを空で初期化
             clipboard,
             last_cursor_window_id: None,
+            settings_are_dirty: false, // ダーティフラグを初期化
         };
+    }
+
+    /// アイドル時や終了時に、ダーティフラグが立っている場合のみ設定をファイルに保存します。
+    pub fn save_settings_if_dirty(&mut self) {
+        if self.settings_are_dirty {
+            log_info("Settings are dirty, saving to file...");
+            save_settings(); // settings.rs のグローバル関数を呼び出す
+            self.settings_are_dirty = false; // 保存したのでフラグをリセット
+        }
     }
 
     /// 指定された `WindowId` が管理対象の子ウィンドウに存在するかどうかを確認します。
@@ -151,6 +164,7 @@ impl WindowManager {
             match clipboard.get_text() {
                 Ok(text) => {
                     log_debug(&format!("Clipboard text received: {}", text));
+                    let mut settings_changed = false;
                     // 対応する ChildWindow のメソッドを呼び出す
                     if let Some(child) = self.children.get_mut(&window_id) {
                         let trimmed_text = text.trim(); // 前後の空白を除去
@@ -179,14 +193,17 @@ impl WindowManager {
                             // ChildWindow の set_background_color を呼び出す
                             // set_background_color は &str を受け取るので、変換後の文字列を渡す
                             child.set_background_color(&color_str);
-                            // --- ★設定保存処理を追加 ---
-                            self.save_child_settings(window_id);
+                            settings_changed = true;
                         } else {
                             // 通常の色コードがペーストされた場合 (既存の処理)
                             child.set_background_color(trimmed_text);
-                            // --- ★設定保存処理を追加 ---
-                            self.save_child_settings(window_id);
+                            settings_changed = true;
                         }
+                    }
+                    // 変更があった場合のみ、メモリ上の設定を更新してダーティフラグを立てる
+                    if settings_changed {
+                        self.update_child_settings_in_memory(window_id);
+                        self.settings_are_dirty = true;
                     }
                 }
                 Err(e) => {
@@ -204,6 +221,7 @@ impl WindowManager {
     pub fn handle_mouse_wheel(&mut self, delta_y: f32) {
         // 最後にカーソルがあったウィンドウIDを使用
         if let Some(window_id) = self.last_cursor_window_id {
+            let mut settings_changed = false;
             if let Some(child) = self.children.get_mut(&window_id) {
                 // delta_y の符号で方向を判断 (正が上、負が下など、環境依存確認)
                 // ここでは delta_y が正なら増加、負なら減少と仮定
@@ -212,8 +230,13 @@ impl WindowManager {
                 // 実際にアルファ値が変わった場合のみ設定を保存
                 if (child.graphics.get_background_color().alpha() - old_alpha).abs() > f32::EPSILON
                 {
-                    self.save_child_settings(window_id);
+                    settings_changed = true;
                 }
+            }
+            // 変更があった場合のみ、メモリ上の設定を更新してダーティフラグを立てる
+            if settings_changed {
+                self.update_child_settings_in_memory(window_id);
+                self.settings_are_dirty = true;
             }
         }
     }
@@ -225,15 +248,15 @@ impl WindowManager {
     }
 
     /// 指定された子ウィンドウの現在の状態（位置、サイズ、色、アイコン）を
-    /// グローバル設定に反映し、ファイルに即時保存します。
-    /// ウィンドウを動かしたり、色を変えたり、アイコンを追加したりした時に呼ばれて、今の状態をちゃんと覚えておくんだ。
-    pub fn save_child_settings(&mut self, window_id: WindowId) {
+    /// グローバル設定に反映します。（ファイル保存は行わない）
+    /// この関数は高速に実行されるべきで、ディスクI/Oは含まないよ！
+    pub fn update_child_settings_in_memory(&mut self, window_id: WindowId) {
         // 対象の子ウィンドウを取得
         let child_window = match self.children.get(&window_id) {
             Some(cw) => cw,
             None => {
                 log_error(&format!(
-                    "設定保存対象のウィンドウが見つかりません (ID: {:?})",
+                    "設定更新対象のウィンドウが見つかりません (ID: {:?})",
                     window_id
                 ));
                 return;
@@ -278,25 +301,11 @@ impl WindowManager {
                             let monitor_pos = monitor.position(); // モニター自体の仮想座標
                             child_settings.monitor_x = Some(pos.x - monitor_pos.x); // モニター内での相対X座標！
                             child_settings.monitor_y = Some(pos.y - monitor_pos.y); // モニター内での相対Y座標！
-                            log_debug(&format!(
-                                "Window {} belongs to monitor '{}' (virt: {:?}, mon_pos: {:?}, rel: ({:?}, {:?}))",
-                                id_str,
-                                child_settings.monitor_name.as_deref().unwrap_or("N/A"),
-                                pos,
-                                monitor_pos,
-                                child_settings.monitor_x,
-                                child_settings.monitor_y
-                            ));
                         } else {
                             // どのモニターにも属してない！？ ちょっと珍しいケースだけど、情報はクリアしとこっと。
                             child_settings.monitor_name = None;
                             child_settings.monitor_x = None;
                             child_settings.monitor_y = None;
-                            log_warn(&format!(
-                                "Window {} - Top-left corner ({:?}) is not on any available monitor. Falling back to no monitor info.",
-                                id_str,
-                                pos
-                            ));
                         }
                     }
                     Err(e) => {
@@ -324,15 +333,12 @@ impl WindowManager {
                         path: icon_info.path.clone(),
                     })
                     .collect();
+                log_debug(&format!("Updated settings in memory for window {}", id_str));
             } else {
-                log_error(&format!(
-                    "保存時に設定エントリが見つかりません (id_str: {})",
-                    id_str
-                ));
+                log_error(&format!("設定更新時にエントリが見つかりません (id_str: {})", id_str));
             }
         }
-        // --- 設定をファイルに即時保存 ---
-        save_settings(); // settings.rs の save_settings を呼び出す
+        // --- ここではファイルに保存しない！ ---
     }
 
     /// 設定から読み込んだアイコンパス情報に基づいて、指定されたウィンドウにアイコンを復元します。
@@ -534,16 +540,18 @@ impl WindowManager {
             return;
         }
         // フォーカスされている子ウィンドウ (可変参照) を取得
+        let focused_id = self.focused_id.unwrap();
         let child = self
             .children
-            .get_mut(&self.focused_id.unwrap())
+            .get_mut(&focused_id)
             .expect("アイコン追加対象の子ウィンドウ取得に失敗");
         // ChildWindow の add メソッドを呼び出す
         child.add(icon);
         // アイコン追加後に再描画を要求 (任意だが推奨)
         child.window.request_redraw();
-        // --- ★設定保存処理を追加 ---
-        self.save_child_settings(self.focused_id.unwrap());
+        // --- ★設定保存処理を更新 ---
+        self.update_child_settings_in_memory(focused_id);
+        self.settings_are_dirty = true;
     }
 
     /// 指定されたウィンドウにおけるマウスカーソルの最新位置を記録します。
@@ -801,7 +809,7 @@ impl WindowManager {
             "Window {:?} and its data removed successfully.",
             window_id
         ));
-        save_settings(); // 設定ファイルに即時保存
+        save_settings(); // ウィンドウ削除は重要な操作なので、即時保存する
     }
 
     /// 指定されたウィンドウの、指定されたインデックスにあるアイコンを削除します。
@@ -817,8 +825,9 @@ impl WindowManager {
                 // カーソル位置情報は他の操作で必要になる可能性があるので、ここでは削除しない
                 // self.last_cursor_pos.remove(&window_id);
                 child.window.request_redraw(); // アイテム削除後に再描画を要求
-                // --- ★設定保存処理を追加 ---
-                self.save_child_settings(window_id);
+                // --- ★設定保存処理を更新 ---
+                self.update_child_settings_in_memory(window_id);
+                self.settings_are_dirty = true;
             } else {
                 // 無効なインデックスの場合 (通常は起こらないはず)
                 log_error(&format!(

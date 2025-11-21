@@ -13,7 +13,9 @@ use desktop_grouping::tray::tray_icon::create_tray;
 use file_drag::IconInfo;
 use logger::{log_debug, log_info, log_warn, log_error};
 use mywindow::UserEvent;
+use std::collections::HashMap;
 use std::rc::Rc;
+use std::thread;
 
 // generate_child_id, ChildSettings など必要なものをインポート
 use desktop_grouping::logger; // logger モジュールをライブラリから使うよ！
@@ -56,6 +58,19 @@ fn main() {
     let clipboard = Clipboard::new().ok(); // エラーは許容する (None になる)
     let mut manager = mywindow::WindowManager::new(clipboard); // new に引数を追加
 
+    // --- 設定読み込みを別スレッドで開始 ---
+    let settings_proxy = event_loop.create_proxy();
+    thread::spawn(move || {
+        log_info("Starting settings loading thread...");
+        // get_settings_reader() を呼ぶと、中で LazyLock が動いてファイルI/Oが発生するよ！
+        let children = get_settings_reader().children.clone();
+        log_info(&format!("Settings loaded. Found {} child window configurations.", children.len()));
+        // 読み込みが終わったら、メインスレッドに結果を伝えるイベントを送るんだ。
+        if let Err(e) = settings_proxy.send_event(UserEvent::SettingsLoaded(children)) {
+            log_error(&format!("Failed to send SettingsLoaded event: {}", e));
+        }
+    });
+
     // トレイアイコンの作成
     let _tray = create_tray();
     // トレイイベント用プロキシ
@@ -73,15 +88,23 @@ fn main() {
             // target は EventLoopWindowTarget
             target.set_control_flow(ControlFlow::Wait);
             match event {
-                Event::NewEvents(StartCause::Init) => handle_new_events_init(target, &mut manager),
+                // Init イベントでは何もしないよ！代わりに UserEvent でウィンドウを作るからね！
+                Event::NewEvents(StartCause::Init) => {}
                 Event::WindowEvent { event, window_id } => {
                     handle_window_event(target, &mut manager, event, window_id)
                 }
                 Event::DeviceEvent { event, .. } => handle_device_event(&mut manager, event),
                 Event::UserEvent(user_event) => handle_user_event(target, &mut manager, user_event),
+                // アプリケーションが終了する直前のイベントだよ！
                 Event::LoopExiting => {
                     log_info("Exiting application...");
-                    // --- 終了時の保存処理は不要になったよ！ ---
+                    // --- 終了前に、未保存の設定があれば保存するよ！ ---
+                    manager.save_settings_if_dirty();
+                }
+                // 他のイベント処理がすべて終わり、イベントループが待機状態に入る直前のイベントだよ！
+                Event::AboutToWait => {
+                    // --- アイドル中に、未保存の設定があれば保存するよ！ ---
+                    manager.save_settings_if_dirty();
                 }
                 _ => {} // 他のイベントは無視
             }
@@ -89,128 +112,125 @@ fn main() {
         .expect("Failed to start event loop");
 }
 
-/// `Event::NewEvents(StartCause::Init)` イベントを処理するよ！
-fn handle_new_events_init(
+/// 設定情報に基づいて、子ウィンドウを復元するよ！
+/// 以前は handle_new_events_init だったけど、責務を分けてこっちに持ってきたんだ。
+fn create_windows_from_settings(
     target: &winit::event_loop::EventLoopWindowTarget<UserEvent>,
     manager: &mut mywindow::WindowManager,
+    children: &HashMap<String, ChildSettings>, // &HashMap を受け取るように変更
 ) {
-    // --- 設定から既存の子ウィンドウを読み込む ---
-    {
-        // settings_reader のスコープを限定
-        let settings_reader = get_settings_reader();
-        for (id_str, child_setting) in settings_reader.children.iter() {
-            log_info(&format!("Loading child window: {}", id_str));
-            // --- ウィンドウの初期位置を決めるよ！ ---
-            let mut initial_position = PhysicalPosition::new(child_setting.x, child_setting.y); // まずは今までの仮想座標を使うね！
+    for (id_str, child_setting) in children.iter() {
+        log_info(&format!("Loading child window: {}", id_str));
+        // --- ウィンドウの初期位置を決めるよ！ ---
+        let mut initial_position = PhysicalPosition::new(child_setting.x, child_setting.y); // まずは今までの仮想座標を使うね！
 
-            // もしモニター情報があったら…
-            if let (Some(monitor_name), Some(monitor_x), Some(monitor_y)) = (
-                &child_setting.monitor_name,
-                child_setting.monitor_x,
-                child_setting.monitor_y,
-            ) {
-                let mut found_monitor = false;
-                // 今つながってるモニターの中に、覚えてた名前のモニターがあるか探すよ！
-                for monitor_handle in target.available_monitors() {
-                    if monitor_handle.name().as_deref() == Some(monitor_name.as_str()) {
-                        // あった！٩(ˊᗜˋ*)و
-                        let current_monitor_pos = monitor_handle.position(); // そのモニターの今の場所
-                        // 新しいウィンドウの位置を計算するよ！ (モニターの場所 + モニターの中の相対的な場所)
-                        initial_position.x = current_monitor_pos.x + monitor_x;
-                        initial_position.y = current_monitor_pos.y + monitor_y;
-                        log_info(&format!(
-                            "Window {} restored to monitor '{}' at relative ({}, {}), virtual ({}, {})",
-                            id_str,
-                            monitor_name,
-                            monitor_x,
-                            monitor_y,
-                            initial_position.x,
-                            initial_position.y
-                        ));
-                        found_monitor = true;
-                        break; // 見つかったからループは終わり！
+        // もしモニター情報があったら…
+        if let (Some(monitor_name), Some(monitor_x), Some(monitor_y)) = (
+            &child_setting.monitor_name,
+            child_setting.monitor_x,
+            child_setting.monitor_y,
+        ) {
+            let mut found_monitor = false;
+            // 今つながってるモニターの中に、覚えてた名前のモニターがあるか探すよ！
+            for monitor_handle in target.available_monitors() {
+                if monitor_handle.name().as_deref() == Some(monitor_name.as_str()) {
+                    // あった！٩(ˊᗜˋ*)و
+                    let current_monitor_pos = monitor_handle.position(); // そのモニターの今の場所
+                    // 新しいウィンドウの位置を計算するよ！ (モニターの場所 + モニターの中の相対的な場所)
+                    initial_position.x = current_monitor_pos.x + monitor_x;
+                    initial_position.y = current_monitor_pos.y + monitor_y;
+                    log_info(&format!(
+                        "Window {} restored to monitor '{}' at relative ({}, {}), virtual ({}, {})",
+                        id_str,
+                        monitor_name,
+                        monitor_x,
+                        monitor_y,
+                        initial_position.x,
+                        initial_position.y
+                    ));
+                    found_monitor = true;
+                    break; // 見つかったからループは終わり！
+                }
+            }
+            if !found_monitor {
+                // あれ～？覚えてたモニターが見つからなかった…(´・ω・`)
+                log_warn(&format!(
+                    "Window {} - Monitor '{}' not found. Falling back to virtual coordinates ({}, {}).",
+                    id_str, monitor_name, child_setting.x, child_setting.y
+                ));
+
+                // --- フォールバック位置の検証 ---
+                let mut position_is_visible = false;
+                for monitor in target.available_monitors() {
+                    let monitor_pos = monitor.position();
+                    let monitor_size = monitor.size();
+                    let monitor_right = monitor_pos.x + monitor_size.width as i32;
+                    let monitor_bottom = monitor_pos.y + monitor_size.height as i32;
+
+                    // ウィンドウの左上がモニター内に入っているか簡易チェック
+                    if initial_position.x >= monitor_pos.x && initial_position.x < monitor_right &&
+                       initial_position.y >= monitor_pos.y && initial_position.y < monitor_bottom {
+                        position_is_visible = true;
+                        break;
                     }
                 }
-                if !found_monitor {
-                    // あれ～？覚えてたモニターが見つからなかった…(´・ω・`)
+
+                // どのモニターにも表示されない位置なら、プライマリモニターに強制移動
+                if !position_is_visible {
                     log_warn(&format!(
-                        "Window {} - Monitor '{}' not found. Falling back to virtual coordinates ({}, {}).",
-                        id_str, monitor_name, child_setting.x, child_setting.y
+                        "Window {} - Fallback position ({}, {}) is not on any visible monitor. Moving to primary monitor.",
+                        id_str, initial_position.x, initial_position.y
                     ));
-
-                    // --- フォールバック位置の検証 ---
-                    let mut position_is_visible = false;
-                    for monitor in target.available_monitors() {
-                        let monitor_pos = monitor.position();
-                        let monitor_size = monitor.size();
-                        let monitor_right = monitor_pos.x + monitor_size.width as i32;
-                        let monitor_bottom = monitor_pos.y + monitor_size.height as i32;
-
-                        // ウィンドウの左上がモニター内に入っているか簡易チェック
-                        if initial_position.x >= monitor_pos.x && initial_position.x < monitor_right &&
-                           initial_position.y >= monitor_pos.y && initial_position.y < monitor_bottom {
-                            position_is_visible = true;
-                            break;
-                        }
-                    }
-
-                    // どのモニターにも表示されない位置なら、プライマリモニターに強制移動
-                    if !position_is_visible {
-                        log_warn(&format!(
-                            "Window {} - Fallback position ({}, {}) is not on any visible monitor. Moving to primary monitor.",
+                    if let Some(primary_monitor) = target.primary_monitor() {
+                        let monitor_pos = primary_monitor.position();
+                        let monitor_size = primary_monitor.size();
+                        // プライマリモニターの中央あたりに配置
+                        initial_position.x = monitor_pos.x + (monitor_size.width as i32 / 4);
+                        initial_position.y = monitor_pos.y + (monitor_size.height as i32 / 4);
+                        log_info(&format!(
+                            "Window {} moved to primary monitor center at ({}, {}).",
                             id_str, initial_position.x, initial_position.y
                         ));
-                        if let Some(primary_monitor) = target.primary_monitor() {
-                            let monitor_pos = primary_monitor.position();
-                            let monitor_size = primary_monitor.size();
-                            // プライマリモニターの中央あたりに配置
-                            initial_position.x = monitor_pos.x + (monitor_size.width as i32 / 4);
-                            initial_position.y = monitor_pos.y + (monitor_size.height as i32 / 4);
-                            log_info(&format!(
-                                "Window {} moved to primary monitor center at ({}, {}).",
-                                id_str, initial_position.x, initial_position.y
-                            ));
-                        } else {
-                            // プライマリモニターすら取れない最悪のケース… (0, 0) にする
-                            log_error("Could not get primary monitor. Falling back to (0, 0).");
-                            initial_position.x = 0;
-                            initial_position.y = 0;
-                        }
+                    } else {
+                        // プライマリモニターすら取れない最悪のケース… (0, 0) にする
+                        log_error("Could not get primary monitor. Falling back to (0, 0).");
+                        initial_position.x = 0;
+                        initial_position.y = 0;
                     }
                 }
-            } else {
-                // モニター情報がなかったから、今まで通り仮想座標を使うね！
-                log_info(&format!(
-                    "Window {} - No monitor-specific info. Using virtual coordinates ({}, {}).",
-                    id_str, child_setting.x, child_setting.y
-                ));
             }
-            let mut effective_settings = child_setting.clone();
-            effective_settings.x = initial_position.x;
-            effective_settings.y = initial_position.y;
-            let child_window =
-                window_utils::create_child_window(&target, Some(&effective_settings)); // 便利屋さんにお願い！
-            let child_window_id = child_window.id();
-
-            // アイコン復元処理だよっ！
-            // manager にウィンドウを登録してからアイコン情報をロードするね！
-
-            // manager にウィンドウと id_str、設定情報を登録
-            manager.insert(
-                &child_window_id,
-                Rc::new(child_window),
-                id_str.clone(),
-                child_setting,
-            );
-            // 次に、設定から読み込んだアイコンパスを使ってアイコンを復元し、manager 経由で追加
-            manager.restore_icons(&child_window_id, &child_setting.icons);
-            manager.backmost(&child_window_id);
-
-            if let Some(child_win) = manager.get_window_ref(&child_window_id) {
-                child_win.request_redraw();
-            }
+        } else {
+            // モニター情報がなかったから、今まで通り仮想座標を使うね！
+            log_info(&format!(
+                "Window {} - No monitor-specific info. Using virtual coordinates ({}, {}).",
+                id_str, child_setting.x, child_setting.y
+            ));
         }
-    } // settings_reader のスコープ終了
+        let mut effective_settings = child_setting.clone();
+        effective_settings.x = initial_position.x;
+        effective_settings.y = initial_position.y;
+        let child_window =
+            window_utils::create_child_window(&target, Some(&effective_settings)); // 便利屋さんにお願い！
+        let child_window_id = child_window.id();
+
+        // アイコン復元処理だよっ！
+        // manager にウィンドウを登録してからアイコン情報をロードするね！
+
+        // manager にウィンドウと id_str、設定情報を登録
+        manager.insert(
+            &child_window_id,
+            Rc::new(child_window),
+            id_str.clone(),
+            child_setting,
+        );
+        // 次に、設定から読み込んだアイコンパスを使ってアイコンを復元し、manager 経由で追加
+        manager.restore_icons(&child_window_id, &child_setting.icons);
+        manager.backmost(&child_window_id);
+
+        if let Some(child_win) = manager.get_window_ref(&child_window_id) {
+            child_win.request_redraw();
+        }
+    }
 }
 
 /// `Event::WindowEvent` を処理するよ！
@@ -327,7 +347,9 @@ fn handle_window_event(
                     "Mouse released after move/resize on window {:?}. Saving settings.",
                     window_id
                 ));
-                manager.save_child_settings(window_id);
+                // --- ★設定保存処理を更新 ---
+                manager.update_child_settings_in_memory(window_id);
+                manager.settings_are_dirty = true;
             }
         }
         WindowEvent::RedrawRequested => {
@@ -335,6 +357,9 @@ fn handle_window_event(
         }
         WindowEvent::Resized(size) => {
             manager.resize(&window_id, size);
+            // --- ★リサイズ後も設定を更新 ---
+            manager.update_child_settings_in_memory(window_id);
+            manager.settings_are_dirty = true;
         }
         WindowEvent::DroppedFile(path) => {
             let icon = IconInfo::new(path);
@@ -390,13 +415,17 @@ fn handle_device_event(manager: &mut mywindow::WindowManager, event: DeviceEvent
     }
 }
 
-/// `Event::UserEvent` (トレイメニューイベント) を処理するよ！
+/// `Event::UserEvent` (トレイメニューや設定読み込み) を処理するよ！
 fn handle_user_event(
     target: &winit::event_loop::EventLoopWindowTarget<UserEvent>,
     manager: &mut mywindow::WindowManager,
     user_event: UserEvent,
 ) {
     match user_event {
+        UserEvent::SettingsLoaded(children) => {
+            log_info("Received SettingsLoaded event. Creating windows...");
+            create_windows_from_settings(target, manager, &children);
+        }
         UserEvent::MenuEvent(event) => match event.id.as_ref() {
             MENU_ID_NEW_GROUP => {
                 // "New Group" の処理だよ！
@@ -419,9 +448,13 @@ fn handle_user_event(
                 manager.insert(
                     &child_window_id,
                     Rc::new(child_window),
-                    new_id_str,
+                    new_id_str.clone(),
                     &default_settings,
                 );
+                // 新規作成時もダーティフラグを立てて、あとで保存されるようにする
+                manager.update_child_settings_in_memory(child_window_id);
+                manager.settings_are_dirty = true;
+
                 manager.backmost(&child_window_id);
                 if let Some(child_win) = manager.get_window_ref(&child_window_id) {
                     child_win.request_redraw();
