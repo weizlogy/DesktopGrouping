@@ -1,6 +1,6 @@
 [package]
 name = "desktop_grouping"
-version = "2.0.5"
+version = "2.0.6"
 edition = "2024"
 license = "MIT"
 homepage = "https://blog.weizlogy.com/software/2024/10/25/desktopgrouping.html"

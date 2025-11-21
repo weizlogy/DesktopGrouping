@@ -7,7 +7,7 @@
 ;--------------------------------
 
 !define APP_NAME "Desktop Grouping"
-!define APP_VERSION "2.0.5" ; Cargo.toml のバージョンと合わせるとGood!
+!define APP_VERSION "2.0.6" ; Cargo.toml のバージョンと合わせるとGood!
 !define APP_PUBLISHER "weizlogy"
 !define APP_EXE "desktop_grouping.exe"
 !define APP_UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
