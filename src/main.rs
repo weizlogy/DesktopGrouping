@@ -9,13 +9,18 @@ mod settings;
 mod window_utils; // 便利屋さんのお家も教えてあげる！
 
 use arboard::Clipboard;
+use child_window::calculate_border_color;
+use child_window::color_to_hex_string;
+use desktop_grouping::graphics::parse_color;
 use desktop_grouping::tray::tray_icon::create_tray;
 use file_drag::IconInfo;
 use logger::{log_debug, log_info, log_warn, log_error};
+use mywindow::generate_random_color_hex;
 use mywindow::UserEvent;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::thread;
+use tiny_skia::Color;
 
 // generate_child_id, ChildSettings など必要なものをインポート
 use desktop_grouping::logger; // logger モジュールをライブラリから使うよ！
@@ -228,6 +233,7 @@ fn create_windows_from_settings(
         manager.backmost(&child_window_id);
 
         if let Some(child_win) = manager.get_window_ref(&child_window_id) {
+            child_win.set_visible(true);
             child_win.request_redraw();
         }
     }
@@ -431,7 +437,18 @@ fn handle_user_event(
                 // "New Group" の処理だよ！
                 log_info("MenuEvent: New Group.");
                 let new_id_str = generate_child_id();
-                let default_settings = ChildSettings::default();
+                let mut default_settings = ChildSettings::default();
+
+                // 背景色と枠線の色を設定
+                let bg_color_hex = generate_random_color_hex();
+                let bg_color =
+                    parse_color(&bg_color_hex).unwrap_or_else(|| Color::from_rgba8(255, 255, 255, 153));
+                let border_color = calculate_border_color(bg_color, &new_id_str);
+                let border_color_hex = color_to_hex_string(border_color);
+
+                default_settings.bg_color = bg_color_hex;
+                default_settings.border_color = border_color_hex;
+
                 {
                     let mut settings_writer = get_settings_writer();
                     settings_writer
@@ -457,6 +474,7 @@ fn handle_user_event(
 
                 manager.backmost(&child_window_id);
                 if let Some(child_win) = manager.get_window_ref(&child_window_id) {
+                    child_win.set_visible(true);
                     child_win.request_redraw();
                 }
             }

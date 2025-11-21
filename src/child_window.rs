@@ -216,7 +216,7 @@ impl ChildWindow {
 /// 5.  **ハッシュで微調整**: 最初に作ったハッシュ値を使って、色相をちょっとだけズラすんだ。
 ///     これで、同じような背景色でもウィンドウごとに枠線色が微妙に変わって、見分けやすくなるかも！
 /// 6.  **RGBに戻す**: 最後にHSLからRGBに戻して、`tiny_skia::Color` にして返すよ！
-fn calculate_border_color(bg_color: Color, id_str: &str) -> Color {
+pub fn calculate_border_color(bg_color: Color, id_str: &str) -> Color {
     let mut hasher = DefaultHasher::new();
     id_str.hash(&mut hasher);
     let hash = hasher.finish();

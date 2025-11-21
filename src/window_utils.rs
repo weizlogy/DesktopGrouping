@@ -48,7 +48,7 @@ pub fn create_child_window(
 ) -> Window {
     let mut builder = WindowBuilder::new()
         .with_title("Desktop Grouping")
-        .with_visible(true)
+        .with_visible(false)
         .with_active(false)
         .with_skip_taskbar(true)
         .with_resizable(true)

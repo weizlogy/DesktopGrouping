@@ -6,7 +6,7 @@ use std::{
 
 use arboard::Clipboard;
 use desktop_grouping::win32::ui_wam;
-use rand::Rng;
+use rand::Rng; // ★ rand を use するよ！
 use tiny_skia::Color;
 use winit::{
     dpi::PhysicalPosition,
@@ -18,11 +18,15 @@ use crate::{
     window_utils::show_confirmation_dialog,
 };
 
+// ★ color_to_hex_string を use するよ！
+use crate::child_window::color_to_hex_string;
+
 /// ダブルクリックと判定する時間閾値 (ミリ秒)
 const DOUBLE_CLICK_THRESHOLD_MS: u64 = 500;
 
 /// アイコン実行時エフェクトの表示時間 (ミリ秒)
 const EXECUTION_EFFECT_DURATION_MS: u64 = 200;
+
 
 /// アプリケーション内で発生するカスタムイベント。
 /// トレイメニューからのイベントと、設定読み込み完了イベントがあるよ！
@@ -88,6 +92,17 @@ impl WindowControl {
     pub fn can_control(&self) -> bool {
         return self.keybord_pressed && self.mouse_pressed;
     }
+}
+
+/// ランダムな色を生成し、#RRGGBBAA 形式の16進数文字列で返すよ！
+pub fn generate_random_color_hex() -> String {
+    let mut rng = rand::thread_rng();
+    let r: u8 = rng.r#gen();
+    let g: u8 = rng.r#gen();
+    let b: u8 = rng.r#gen();
+    // アルファ値はデフォルトの半透明 (0x99 = 153) にする
+    let random_color = Color::from_rgba8(r, g, b, 153);
+    color_to_hex_string(random_color)
 }
 
 impl WindowManager {
@@ -174,24 +189,11 @@ impl WindowManager {
                                 "Window {}: Received #Random command. Generating random color.",
                                 child.id_str
                             ));
-                            let mut rng = rand::thread_rng();
-                            let r: u8 = rng.r#gen();
-                            let g: u8 = rng.r#gen();
-                            let b: u8 = rng.r#gen();
-                            // アルファ値はデフォルトの半透明 (0x99 = 153) にする (既存のデフォルトに合わせる)
-                            // もし不透明にしたければ 255 にする
-                            let random_color = Color::from_rgba8(r, g, b, 153);
-
-                            // 生成した Color を #RRGGBBAA 形式の文字列に変換
-                            // (既存の color_to_hex_string ヘルパー関数を利用)
-                            let color_str = color_to_hex_string(random_color);
+                            let color_str = generate_random_color_hex();
                             log_debug(&format!(
                                 "Window {}: Generated random color: {}",
                                 child.id_str, color_str
                             ));
-
-                            // ChildWindow の set_background_color を呼び出す
-                            // set_background_color は &str を受け取るので、変換後の文字列を渡す
                             child.set_background_color(&color_str);
                             settings_changed = true;
                         } else {
