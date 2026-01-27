@@ -4,7 +4,7 @@ use ab_glyph::FontRef;
 use softbuffer::{Context, Surface as SoftSurface};
 use tiny_skia::{
     Color, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, Rect, Shader,
-    SpreadMode, Stroke, Transform, FillRule,
+    SpreadMode, Transform, FillRule,
 };
 use windows::Win32::Graphics::Gdi::BITMAPINFO;
 use winit::{dpi::PhysicalSize, window::Window};
@@ -21,7 +21,6 @@ use super::{
 };
 
 // --- 枠線定数 ---
-const BORDER_WIDTH: f32 = 2.0; // ウィンドウの枠線の太さ
 const CORNER_RADIUS: f32 = 12.0; // ウィンドウの枠線の丸角のアール
 // ---------------------------------------------------------
 
@@ -51,8 +50,6 @@ pub struct MyGraphics {
     // --- フォント ---
     font: FontRef<'static>,           // フォントデータを保持
     background_paint: Paint<'static>, // 背景色用 Paint
-    border_paint: Paint<'static>,     // 枠線色用 Paint
-    border_stroke: Stroke,            // 枠線の太さなど
 }
 
 impl MyGraphics {
@@ -65,7 +62,6 @@ impl MyGraphics {
     pub fn new(
         window: &Rc<Window>,
         bg_color_str: &str,
-        border_color_str: &str,
         initial_scale_factor: f64,
     ) -> Self {
         let initial_size = window.inner_size();
@@ -93,21 +89,10 @@ impl MyGraphics {
         // 色をパース、失敗したらデフォルト色にフォールバック
         let bg_color =
             parse_color(bg_color_str).unwrap_or_else(|| Color::from_rgba8(255, 255, 255, 153)); // Default: #FFFFFF99
-        let border_color =
-            parse_color(border_color_str).unwrap_or_else(|| Color::from_rgba8(0, 0, 0, 255)); // Default: #000000FF
 
         let mut background_paint = Paint::default();
         background_paint.set_color(bg_color);
         background_paint.anti_alias = true; // お好みで
-
-        let mut border_paint = Paint::default();
-        border_paint.set_color(border_color);
-        border_paint.anti_alias = true;
-
-        let border_stroke = Stroke {
-            width: BORDER_WIDTH,
-            ..Default::default()
-        }; // 枠線の太さなど
 
         let mut graphics = MyGraphics {
             soft_surface,
@@ -128,8 +113,6 @@ impl MyGraphics {
             adjust_select_rect: 0.0,
             font, // フォントを保持
             background_paint,
-            border_paint,
-            border_stroke,
         };
         graphics.update_scaled_layout_values(); // スケーリングされたレイアウト値を計算して設定！
         return graphics;
@@ -170,14 +153,6 @@ impl MyGraphics {
 
     /// 枠線色を更新するよ！
     /// 新しい色 (`color`) をもらって、こっちもアルファ値を下限チェックしてから `border_paint` に設定するんだ。
-    pub fn update_border_color(&mut self, color: Color) {
-        let clamped_color = colors::clamp_alpha(color);
-        self.border_paint.set_color(clamped_color);
-    }
-
-    /// 今設定されてる背景色を取得するよ！
-    /// `Paint` オブジェクトが直接色を返してくれないから、中の `Shader` を見て色を取り出すんだ。
-    /// もし万が一、想定外のシェーダーだったら、透明色を返してログに警告を出すようになってるよ。
     pub fn get_background_color(&self) -> Color {
         // self.background_paint.color // <- これはエラーになる！
         // shader フィールドから色を取得する
@@ -189,23 +164,6 @@ impl MyGraphics {
                 // 本来ここに来ることはないはずなので警告ログを出す (logger クレートの log_warn を使うよ！)
                 log_warn("Background paint shader is not SolidColor!");
                 Color::TRANSPARENT // または適切なデフォルト値
-            }
-        }
-    }
-
-    /// 今設定されてる枠線色を取得するよ！ (設定保存用とかに使うんだ)
-    /// こっちも `Paint` の中の `Shader` を見て色を取り出すよ。
-    pub fn get_border_color(&self) -> Color {
-        // self.border_paint.color // <- これもエラーになる！
-        // shader フィールドから色を取得する
-        match self.border_paint.shader {
-            // shader が SolidColor の場合、その中の color を返す
-            Shader::SolidColor(color) => color,
-            // SolidColor 以外は想定していないが、フォールバックとして黒色を返す
-            _ => {
-                // 本来ここに来ることはないはずなので警告ログを出す (logger クレートの log_warn を使うよ！)
-                log_warn("Border paint shader is not SolidColor!");
-                Color::BLACK // または適切なデフォルト値
             }
         }
     }
@@ -253,97 +211,101 @@ impl MyGraphics {
         // Pixmap 全体を完全に透明な色でクリアする
         self.pixmap.fill(Color::TRANSPARENT);
 
-        // --- 角丸背景の描画 ---
-        let base_color = self.get_background_color();
-        let (start_color, end_color) = colors::create_gradient_colors(base_color);
-        let border_half_width = self.border_stroke.width / 2.0;
-        let w = (self.width as f32 - self.border_stroke.width).max(0.0);
-        let h = (self.height as f32 - self.border_stroke.width).max(0.0);
-        let x = border_half_width;
-        let y = border_half_width;
-        let mut r: f32 = CORNER_RADIUS;
-        r = r.min(w / 2.0).min(h / 2.0);
-        if w > 0.0 && h > 0.0 && r > 0.0 {
-          let mut pb = PathBuilder::new();
-          pb.move_to(x + r, y);
-          pb.line_to(x + w - r, y);
-          pb.quad_to(x + w, y, x + w, y + r);
-          pb.line_to(x + w, y + h - r);
-          pb.quad_to(x + w, y + h, x + w - r, y + h);
-          pb.line_to(x + r, y + h);
-          pb.quad_to(x, y + h, x, y + h - r);
-          pb.line_to(x, y + r);
-          pb.quad_to(x, y, x + r, y);
-          pb.close();
-          if let Some(bg_path) = pb.finish() {
-            // グラデーション背景
-            if let Some(gradient) = LinearGradient::new(
-              Point::from_xy(x, y),
-              Point::from_xy(x + w, y + h),
-              vec![
-                GradientStop::new(0.0, start_color),
-                GradientStop::new(1.0, end_color),
-              ],
-              SpreadMode::Pad,
-              Transform::identity(),
-            ) {
-              let mut gradient_paint = Paint::default();
-              gradient_paint.shader = gradient;
-              gradient_paint.anti_alias = true;
-              self.pixmap.fill_path(
-                &bg_path,
-                &gradient_paint,
-                FillRule::Winding,
-                Transform::identity(),
-                None,
-              );
+        // --- 影の描画 ---
+        let shadow_color = Color::from_rgba8(0, 0, 0, 70); // 影の色 (半透明の黒)
+        let shadow_offset_x = 2.0 * self.scale_factor as f32; // X方向のオフセット
+        let shadow_offset_y = 3.0 * self.scale_factor as f32; // Y方向のオフセット
+
+        // 背景と影のための角丸矩形のパスを一度だけ生成する
+        let main_path = {
+            let w = self.width as f32;
+            let h = self.height as f32;
+            // 影がはみ出さないように、描画領域を少しだけ内側にオフセットさせる
+            let rect_w = w - shadow_offset_x.abs() - 4.0;
+            let rect_h = h - shadow_offset_y.abs() - 4.0;
+            let rect_x = (w - rect_w) / 2.0 - shadow_offset_x / 2.0;
+            let rect_y = (h - rect_h) / 2.0 - shadow_offset_y / 2.0;
+
+            let mut r: f32 = CORNER_RADIUS;
+            r = r.min(rect_w / 2.0).min(rect_h / 2.0); // 半径が大きすぎる場合に調整
+
+            if rect_w > 0.0 && rect_h > 0.0 {
+                let mut pb = PathBuilder::new();
+                pb.move_to(rect_x + r, rect_y);
+                pb.line_to(rect_x + rect_w - r, rect_y);
+                pb.quad_to(rect_x + rect_w, rect_y, rect_x + rect_w, rect_y + r);
+                pb.line_to(rect_x + rect_w, rect_y + rect_h - r);
+                pb.quad_to(
+                    rect_x + rect_w,
+                    rect_y + rect_h,
+                    rect_x + rect_w - r,
+                    rect_y + rect_h,
+                );
+                pb.line_to(rect_x + r, rect_y + rect_h);
+                pb.quad_to(rect_x, rect_y + rect_h, rect_x, rect_y + rect_h - r);
+                pb.line_to(rect_x, rect_y + r);
+                pb.quad_to(rect_x, rect_y, rect_x + r, rect_y);
+                pb.close();
+                pb.finish()
             } else {
-              // グラデーション失敗時は単色
-              self.pixmap.fill_path(
-                &bg_path,
-                &self.background_paint,
-                FillRule::Winding,
-                Transform::identity(),
-                None,
-              );
+                None
             }
-          }
+        };
+
+        // --- 影の描画 ---
+        if let Some(ref path) = main_path {
+            let mut shadow_paint = Paint::default();
+            shadow_paint.set_color(shadow_color);
+            shadow_paint.anti_alias = true;
+            // パスを少しオフセットさせて影を描画
+            let shadow_transform = Transform::from_translate(shadow_offset_x, shadow_offset_y);
+            self.pixmap.fill_path(
+                path,
+                &shadow_paint,
+                FillRule::Winding,
+                shadow_transform,
+                None,
+            );
         }
 
-        // --- 枠線描画 (角丸バージョン！) ---
-        // PathBuilderで角丸矩形を自前で作るよ！
-        let border_half_width = self.border_stroke.width / 2.0;
-        let w = (self.width as f32 - self.border_stroke.width).max(0.0);
-        let h = (self.height as f32 - self.border_stroke.width).max(0.0);
-        let x = border_half_width;
-        let y = border_half_width;
-        let mut r: f32 = 10.0; // 角丸半径。お好みで8.0〜12.0にしてもOK！
-        // 角丸半径が大きすぎる場合は自動で調整
-        r = r.min(w / 2.0).min(h / 2.0);
-        if w > 0.0 && h > 0.0 && r > 0.0 {
-          let mut pb = PathBuilder::new();
-          // 右下・左下・左上・右上の順で角を回るよ！
-          pb.move_to(x + r, y);
-          pb.line_to(x + w - r, y);
-          pb.quad_to(x + w, y, x + w, y + r);
-          pb.line_to(x + w, y + h - r);
-          pb.quad_to(x + w, y + h, x + w - r, y + h);
-          pb.line_to(x + r, y + h);
-          pb.quad_to(x, y + h, x, y + h - r);
-          pb.line_to(x, y + r);
-          pb.quad_to(x, y, x + r, y);
-          pb.close();
-          if let Some(path) = pb.finish() {
-            self.pixmap.stroke_path(
-              &path,
-              &self.border_paint,
-              &self.border_stroke,
-              Transform::identity(),
-              None,
-            );
-          }
+        // --- 角丸背景の描画 ---
+        if let Some(bg_path) = main_path {
+            let base_color = self.get_background_color();
+            let (start_color, end_color) = colors::create_gradient_colors(base_color);
+            let w = self.width as f32;
+            let h = self.height as f32;
+
+            if let Some(gradient) = LinearGradient::new(
+                Point::from_xy(0.0, 0.0),
+                Point::from_xy(w, h),
+                vec![
+                    GradientStop::new(0.0, start_color),
+                    GradientStop::new(1.0, end_color),
+                ],
+                SpreadMode::Pad,
+                Transform::identity(),
+            ) {
+                let mut gradient_paint = Paint::default();
+                gradient_paint.shader = gradient;
+                gradient_paint.anti_alias = true;
+                self.pixmap.fill_path(
+                    &bg_path,
+                    &gradient_paint,
+                    FillRule::Winding,
+                    Transform::identity(),
+                    None,
+                );
+            } else {
+                // グラデーション失敗時は単色で塗りつぶし
+                self.pixmap.fill_path(
+                    &bg_path,
+                    &self.background_paint,
+                    FillRule::Winding,
+                    Transform::identity(),
+                    None,
+                );
+            }
         }
-        // ---------------------------------------------------------
     }
 
     /// グループアイコンを描画するよ！
@@ -384,7 +346,7 @@ impl MyGraphics {
         let text_draw_y = grid_y + self.layout_icon_size + self.padding_under_icon; // アイコンの下に、余白を挟んで配置
 
         // --- ホバー状態なら背景を塗るよ ---
-        if is_hovered {
+        if is_hovered || is_executing {
             if let Some(rect) = self.get_item_rect_f32(index) {
                 let base_bg_color = self.get_background_color(); // ウィンドウの現在の背景色を取得
                 let hover_fill_color = colors::calculate_hover_fill_color(base_bg_color);
@@ -394,47 +356,6 @@ impl MyGraphics {
                 fill_paint.anti_alias = true;
                 self.pixmap
                     .fill_rect(rect, &fill_paint, Transform::identity(), None);
-            }
-        }
-
-        // --- 実行中かホバー中かで枠線を描き分けるよ ---
-        if is_executing {
-            if let Some(rect) = self.get_item_rect_f32(index) {
-                // 実行中エフェクト (Gold の太い枠線)
-                let mut exec_paint = Paint::default();
-                exec_paint.set_color_rgba8(0xFF, 0xD7, 0x00, 0xCC); // Gold
-                exec_paint.anti_alias = true;
-                let exec_stroke = Stroke {
-                    width: BORDER_WIDTH * 1.5,
-                    ..Default::default()
-                };
-                self.pixmap.stroke_path(
-                    &PathBuilder::from_rect(rect),
-                    &exec_paint,
-                    &exec_stroke,
-                    Transform::identity(),
-                    None,
-                );
-            }
-        } else if is_hovered {
-            if let Some(rect) = self.get_item_rect_f32(index) {
-                let base_bg_color = self.get_background_color(); // ウィンドウの現在の背景色を取得
-                let hover_border_color = colors::calculate_hover_border_color(base_bg_color);
-
-                let mut stroke_paint = Paint::default();
-                stroke_paint.set_color(hover_border_color);
-                stroke_paint.anti_alias = true;
-                let stroke = Stroke {
-                    width: BORDER_WIDTH,
-                    ..Default::default()
-                };
-                self.pixmap.stroke_path(
-                    &PathBuilder::from_rect(rect),
-                    &stroke_paint,
-                    &stroke,
-                    Transform::identity(),
-                    None,
-                );
             }
         }
 

@@ -167,7 +167,7 @@ impl WindowManager {
         // ChildWindow::new に色情報を渡す
         self.children.insert(
             *id,
-            ChildWindow::new(window, id_str, &settings.bg_color, &settings.border_color),
+            ChildWindow::new(window, id_str, &settings.bg_color),
         );
     }
 
@@ -324,8 +324,6 @@ impl WindowManager {
                 // --- 色情報の保存 ---
                 child_settings.bg_color =
                     color_to_hex_string(child_window.graphics.get_background_color());
-                child_settings.border_color =
-                    color_to_hex_string(child_window.graphics.get_border_color());
 
                 // --- アイコン情報の保存 ---
                 child_settings.icons = child_window

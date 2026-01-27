@@ -1,8 +1,6 @@
 use std::rc::Rc;
 
-use colorsys::{Hsl, Rgb};
 // use rand::Rng; // rand::Rng は使われてないみたいだから、コメントアウトしちゃおっか！
-use std::hash::{DefaultHasher, Hash, Hasher};
 use tiny_skia::Color;
 use winit::{
     dpi::PhysicalSize,
@@ -46,12 +44,10 @@ impl ChildWindow {
     /// * `window` - winit のウィンドウインスタンスだよ。`Rc` で包んでね！
     /// * `id_str` - この子ウィンドウちゃんを識別するためのユニークな文字列IDだよ。
     /// * `bg_color_str` - 背景色の初期値を文字列で指定してね (例: `"#RRGGBBAA"`)。
-    /// * `border_color_str` - 枠線色の初期値を文字列で指定してね (例: `"#RRGGBBAA"`)。
     pub fn new(
         window: Rc<Window>,
         id_str: String,
         bg_color_str: &str,
-        border_color_str: &str,
     ) -> ChildWindow {
         // ウィンドウが作られた時の最初の拡大率を覚えておくよ！
         let initial_scale_factor = window.scale_factor();
@@ -59,7 +55,6 @@ impl ChildWindow {
         let graphics = MyGraphics::new(
             &window,
             bg_color_str,
-            border_color_str,
             initial_scale_factor,
         );
         ChildWindow {
@@ -80,19 +75,15 @@ impl ChildWindow {
     /// 背景色を設定するよ！
     ///
     /// 新しい背景色を文字列で受け取って、それをパースして適用するんだ。
-    /// それに合わせて、枠線の色もいい感じに自動計算して更新するよ！
     /// 最後に、ウィンドウに「再描画お願いね！」って伝えるんだ♪
     pub fn set_background_color(&mut self, color_str: &str) {
         if let Some(bg_color) = graphics::parse_color(color_str) {
             self.graphics.update_background_color(bg_color);
-            let border_color = calculate_border_color(bg_color, &self.id_str);
-            self.graphics.update_border_color(border_color);
             self.window.request_redraw();
             log_debug(&format!(
-                "Window {}: BG set to {}, Border calculated to {}",
+                "Window {}: BG set to {}",
                 self.id_str,
                 color_to_hex_string(bg_color),
-                color_to_hex_string(border_color)
             ));
         } else {
             log_warn(&format!(
@@ -106,7 +97,7 @@ impl ChildWindow {
     ///
     /// `delta` の値に応じて、今の背景色のアルファ値（透明度）をちょっとずつ変えるんだ。
     /// `ALPHA_ADJUST_STEP` で、どれくらい変えるか調整できるよ！
-    /// 透明度を変えたら、枠線の色も再計算して、再描画をお願いするよ！
+    /// 透明度を変えたら、再描画をお願いするよ！
     pub fn adjust_alpha(&mut self, delta: f32) {
         let current_bg_color = self.graphics.get_background_color();
         let current_alpha = current_bg_color.alpha();
@@ -122,14 +113,11 @@ impl ChildWindow {
             .unwrap();
 
             self.graphics.update_background_color(new_bg_color);
-            let border_color = calculate_border_color(new_bg_color, &self.id_str);
-            self.graphics.update_border_color(border_color);
             self.window.request_redraw();
             log_debug(&format!(
-                "Window {}: Alpha adjusted to {:.3}, Border recalculated to {}",
+                "Window {}: Alpha adjusted to {:.3}",
                 self.id_str,
                 new_alpha,
-                color_to_hex_string(border_color)
             ));
         }
     }
@@ -204,57 +192,6 @@ impl ChildWindow {
     // backmost の処理は ui_wam を使うから、WindowManager 側で child.window を渡す形の方が素直かも。
 }
 
-/// 背景色とウィンドウIDに基づいて、コントラストを考慮した枠線色を計算するよ！
-///
-/// 目指すのは、背景色に対してそこそこ見やすい枠線色を、ウィンドウごとにちょっとだけ個性的に生成することなんだ。
-///
-/// 1.  **ハッシュ生成**: ウィンドウID文字列からハッシュ値を作るよ。これでウィンドウごとにちょっと違う結果になる素を作るんだ。
-/// 2.  **HSL変換**: 背景色をRGBからHSL (色相・彩度・輝度) に変換するよ。HSLだと色の調整がしやすいからね！
-/// 3.  **補色ベース**: まずは色相を180度回転させて、背景色の補色っぽい色を作るよ。
-/// 4.  **輝度調整**: 背景色が明るかったら枠線は暗めに、背景色が暗かったら枠線は明るめになるように輝度を調整するよ。
-///     これで、背景に埋もれにくくなるはず！ 彩度も、ある程度はっきり見えるように下限を設けたりするよ。
-/// 5.  **ハッシュで微調整**: 最初に作ったハッシュ値を使って、色相をちょっとだけズラすんだ。
-///     これで、同じような背景色でもウィンドウごとに枠線色が微妙に変わって、見分けやすくなるかも！
-/// 6.  **RGBに戻す**: 最後にHSLからRGBに戻して、`tiny_skia::Color` にして返すよ！
-pub fn calculate_border_color(bg_color: Color, id_str: &str) -> Color {
-    let mut hasher = DefaultHasher::new();
-    id_str.hash(&mut hasher);
-    let hash = hasher.finish();
-
-    // 背景色を HSL に変換
-    let bg_rgb = Rgb::from((
-        bg_color.red() as f64 * 255.0,
-        bg_color.green() as f64 * 255.0,
-        bg_color.blue() as f64 * 255.0,
-    ));
-    let bg_hsl: Hsl = bg_rgb.as_ref().into();
-
-    // 補色をベースに
-    let mut border_hsl = bg_hsl.clone();
-    border_hsl.set_hue((bg_hsl.hue() + 180.0) % 360.0);
-
-    // 輝度差を確保
-    let bg_luminance = bg_hsl.lightness();
-    if bg_luminance > 50.0 {
-        border_hsl.set_lightness(border_hsl.lightness().min(40.0));
-    } else {
-        border_hsl.set_lightness(border_hsl.lightness().max(60.0));
-    }
-    border_hsl.set_saturation(border_hsl.saturation().max(30.0));
-    // ハッシュ値で色相を少しだけずらす
-    let hue_shift = (hash % 21) as f64 - 10.0;
-    border_hsl.set_hue((border_hsl.hue() + hue_shift + 360.0) % 360.0);
-
-    let border_rgb: Rgb = (&border_hsl).into();
-
-    Color::from_rgba8(
-        border_rgb.red() as u8,
-        border_rgb.green() as u8,
-        border_rgb.blue() as u8,
-        255, // 枠線は今のところ不透明固定だよ！
-    )
-}
-
 /// `tiny_skia::Color` を `#RRGGBBAA` 形式の文字列に変換するよ！
 /// 設定ファイルに保存するときとかに便利だね！
 pub fn color_to_hex_string(color: Color) -> String {
@@ -278,25 +215,6 @@ mod tests {
     // もし、これらのロジックをテストしたい場合は、
     // Window や MyGraphics のモック (偽物オブジェクト) を作ってテストする方法があるよ！
     // ちょっと上級者向けだけど、いつか挑戦してみるのも楽しいかも！(๑•̀ㅂ•́)و✧
-
-    #[test]
-    fn test_calculate_border_color_consistency() {
-        // 同じ背景色とIDなら、同じ枠線色が計算されるはず！
-        let bg_color = Color::from_rgba8(100, 150, 200, 255);
-        let id = "consistent_id";
-        let border1 = calculate_border_color(bg_color, id);
-        let border2 = calculate_border_color(bg_color, id);
-        assert_eq!(border1, border2);
-    }
-
-    #[test]
-    fn test_calculate_border_color_changes_with_id() {
-        // IDが違えば、枠線色も変わるはず (ハッシュで微調整してるからね！)
-        let bg_color = Color::from_rgba8(120, 120, 120, 255); // グレー
-        let border1 = calculate_border_color(bg_color, "id_one");
-        let border2 = calculate_border_color(bg_color, "id_two");
-        assert_ne!(border1, border2, "IDが違えば枠線色もちょっと変わるはず！");
-    }
 
     #[test]
     fn test_color_to_hex_string() {
