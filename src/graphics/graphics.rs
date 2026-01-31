@@ -212,7 +212,11 @@ impl MyGraphics {
         self.pixmap.fill(Color::TRANSPARENT);
 
         // --- 影の描画 ---
-        let shadow_color = Color::from_rgba8(0, 0, 0, 70); // 影の色 (半透明の黒)
+        // 現在の背景色を取得し、そのアルファ値に比例した影の色を生成する
+        let base_color = self.get_background_color();
+        let shadow_alpha = (base_color.alpha() * 70.0) as u8; // 最大の濃さを70とする
+        let shadow_color = Color::from_rgba8(0, 0, 0, shadow_alpha);
+
         let shadow_offset_x = 2.0 * self.scale_factor as f32; // X方向のオフセット
         let shadow_offset_y = 3.0 * self.scale_factor as f32; // Y方向のオフセット
 
