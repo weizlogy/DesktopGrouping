@@ -3,7 +3,7 @@ use std::{num::NonZeroU32, rc::Rc};
 use ab_glyph::FontRef;
 use softbuffer::{Context, Surface as SoftSurface};
 use tiny_skia::{
-    Color, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, Rect, Shader,
+    Color, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, PixmapPaint, Point, Rect, Shader,
     SpreadMode, Transform, FillRule,
 };
 use windows::Win32::Graphics::Gdi::BITMAPINFO;
@@ -322,35 +322,26 @@ impl MyGraphics {
         is_hovered: bool,
         is_executing: bool,
     ) {
-        let _header = &icon_data.0.bmiHeader;
+        let (header, pixel_data) = icon_data;
 
         // --- グリッドと描画座標の計算 ---
         let col = index % self.items_per_row;
         let row = index / self.items_per_row;
 
-        // グリッドの左上の X 座標 (テキスト描画の基準)
         let grid_x = (col as f32 * self.item_width) + self.padding;
-        // グリッドの左上の Y 座標 (アイコン描画の基準)
         let grid_y = (row as f32 * self.item_height) + self.padding;
 
-        // アイコンの描画座標 (テキストの中央に配置)
-        // テキストが省略される可能性があるので、max_text_width を基準にする
-        // アイコンの幅はレイアウト基準の layout_icon_size を使うことで、
-        // 取得したアイコンのサイズに依らず、常にグリッドの中央に配置されるようにする。
-        // これにより、アイコン取得失敗時 (幅が0) でも描画位置が定まる。
         let icon_draw_x = grid_x + (self.max_text_width / 2.0) - (self.layout_icon_size / 2.0);
         let icon_draw_y = grid_y;
 
-        // テキストの描画座標 (スケーリング済みの値を使うよ！)
-        let text_draw_x = grid_x; // テキストはグリッドの左端から
-        let text_draw_y = grid_y + self.layout_icon_size + self.padding_under_icon; // アイコンの下に、余白を挟んで配置
+        let text_draw_x = grid_x;
+        let text_draw_y = grid_y + self.layout_icon_size + self.padding_under_icon;
 
-        // --- ホバー状態なら背景を塗るよ ---
-        if is_hovered || is_executing {
+        // --- ホバー時の背景 ---
+        if is_hovered {
             if let Some(rect) = self.get_item_rect_f32(index) {
-                let base_bg_color = self.get_background_color(); // ウィンドウの現在の背景色を取得
+                let base_bg_color = self.get_background_color();
                 let hover_fill_color = colors::calculate_hover_fill_color(base_bg_color);
-
                 let mut fill_paint = Paint::default();
                 fill_paint.set_color(hover_fill_color);
                 fill_paint.anti_alias = true;
@@ -359,15 +350,50 @@ impl MyGraphics {
             }
         }
 
-        // アイコンを描画
-        drawing::draw_icon(
-            &mut self.pixmap,
-            &icon_data.0,
-            &icon_data.1,
-            icon_draw_x as u32,
-            icon_draw_y as u32,
-            self.layout_icon_size as u32,
+        // --- アイコン描画 ---
+        let mut transform = Transform::identity();
+        if is_executing {
+            let scale = 1.05;
+            let center_x = icon_draw_x + self.layout_icon_size / 2.0;
+            let center_y = icon_draw_y + self.layout_icon_size / 2.0;
+            transform = transform
+                .post_translate(-center_x, -center_y)
+                .post_scale(scale, scale)
+                .post_translate(center_x, center_y);
+        }
+
+        // drawing::draw_icon のロジックを展開して transform を適用
+        let temp_icon_pixmap =
+            super::drawing::convert_dib_to_pixmap(header, pixel_data, self.layout_icon_size as u32);
+
+        let mut paint = PixmapPaint::default();
+        paint.quality = tiny_skia::FilterQuality::Bicubic;
+        self.pixmap.draw_pixmap(
+            icon_draw_x as i32,
+            icon_draw_y as i32,
+            temp_icon_pixmap.as_ref(),
+            &paint,
+            transform,
+            None,
         );
+
+        // --- 実行中エフェクト（明度アップ） ---
+        if is_executing {
+            let icon_rect = Rect::from_xywh(
+                icon_draw_x,
+                icon_draw_y,
+                self.layout_icon_size,
+                self.layout_icon_size,
+            )
+            .unwrap();
+            let mut fade_paint = Paint::default();
+            // 明度を20%上げる -> 20%の不透明度の白を重ねる
+            fade_paint.set_color_rgba8(255, 255, 255, (255.0 * 0.2) as u8);
+            fade_paint.anti_alias = true;
+            self.pixmap
+                .fill_rect(icon_rect, &fade_paint, Transform::identity(), None);
+        }
+
 
         // テキストを描画 (最大幅を指定)
         drawing::draw_text(
@@ -378,7 +404,7 @@ impl MyGraphics {
             text_draw_x,
             text_draw_y,
             self.max_text_width,
-            self.text_height, // text_height を追加するよ！
+            self.text_height,
         );
     }
 

@@ -83,6 +83,7 @@ fn main() {
         }
     }));
 
+    let event_loop_proxy = event_loop.create_proxy();
     // --- イベントループの実行 ---
     event_loop
         .run(move |event, target| {
@@ -92,7 +93,7 @@ fn main() {
                 // Init イベントでは何もしないよ！代わりに UserEvent でウィンドウを作るからね！
                 Event::NewEvents(StartCause::Init) => {}
                 Event::WindowEvent { event, window_id } => {
-                    handle_window_event(target, &mut manager, event, window_id)
+                    handle_window_event(event_loop_proxy.clone(), target, &mut manager, event, window_id)
                 }
                 Event::DeviceEvent { event, .. } => handle_device_event(&mut manager, event),
                 Event::UserEvent(user_event) => handle_user_event(target, &mut manager, user_event),
@@ -237,6 +238,7 @@ fn create_windows_from_settings(
 
 /// `Event::WindowEvent` を処理するよ！
 fn handle_window_event(
+    proxy: winit::event_loop::EventLoopProxy<UserEvent>,
     target: &winit::event_loop::EventLoopWindowTarget<UserEvent>,
     manager: &mut mywindow::WindowManager,
     event: WindowEvent,
@@ -321,7 +323,7 @@ fn handle_window_event(
             match button {
                 MouseButton::Left => {
                     if state == ElementState::Pressed {
-                        manager.execute_group_item(window_id);
+                        manager.execute_group_item(proxy, window_id);
                     }
                     manager.is_resizing.mouse_pressed = state.is_pressed();
                     manager.is_moving.mouse_pressed = state.is_pressed();
@@ -427,6 +429,9 @@ fn handle_user_event(
         UserEvent::SettingsLoaded(children) => {
             log_info("Received SettingsLoaded event. Creating windows...");
             create_windows_from_settings(target, manager, &children);
+        }
+        UserEvent::ExecutionFinished(window_id) => {
+            manager.finish_execution(window_id);
         }
         UserEvent::MenuEvent(event) => match event.id.as_ref() {
             MENU_ID_NEW_GROUP => {

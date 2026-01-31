@@ -4,56 +4,46 @@ use windows::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFO};
 
 use super::layout::calculate_text_width;
 
-/// アイコンの描画に失敗しちゃった時に、代わりに表示するプレースホルダー（仮の印）を描画するよ！
-fn draw_placeholder_icon(pixmap: &mut Pixmap, x: u32, y: u32, width: u32, height: u32) {
-    let rect = Rect::from_xywh(x as f32, y as f32, width as f32, height as f32)
-        .unwrap_or_else(|| Rect::from_xywh(x as f32, y as f32, 1.0, 1.0).unwrap());
-    let mut paint = Paint::default();
-    paint.set_color_rgba8(0xFF, 0x00, 0x00, 0xAA);
-    paint.anti_alias = true;
-    pixmap.fill_rect(rect, &paint, Transform::identity(), None);
-}
 
-/// アイコンのビットマップデータをピクセルマップに描画するよ！
+
+/// アイコンのビットマップデータを `Pixmap` に変換するよ！
 ///
 /// Windows の BITMAPINFO ヘッダー (`icon_info`) とピクセルデータ (`pixel_data`) をもらって、
-/// それを解釈して `tiny_skia` が扱える形式に変換しながら、指定された座標 (`x`, `y`) に描画するんだ。
-/// DIBフォーマットっていう、ちょっと昔ながらの形式を扱うから、色の並びとか、画像の上下が逆だったりするのに注意しながら処理してるよ！
-/// もしアイコンデータが変だったり、サポートしてない形式だったら、代わりに `expected_size` で指定された大きさの
-/// 赤い四角 (プレースホルダー) を描画するようになってるんだ。
-pub fn draw_icon(
-    pixmap: &mut Pixmap,
+/// それを `tiny_skia` が扱える `Pixmap` に変換して返すんだ。
+/// もしデータが変だったり、サポートしてない形式だったら、代わりに `expected_size` で指定された大きさの
+/// 赤い四角が描画された `Pixmap` を返すよ。
+pub fn convert_dib_to_pixmap(
     icon_info: &BITMAPINFO,
     pixel_data: &[u8],
-    x: u32,
-    y: u32,
     expected_size: u32,
-) {
+) -> Pixmap {
     let header = &icon_info.bmiHeader;
-    // biWidth は負の値の場合があるため絶対値を取る
     let width = header.biWidth.abs() as u32;
-    // biHeight が負の場合はトップダウン DIB、正の場合はボトムアップ DIB
     let height = header.biHeight.abs() as u32;
     let is_top_down = header.biHeight < 0;
-    let bpp = header.biBitCount; // Bits per pixel
+    let bpp = header.biBitCount;
+
+    // --- 事前チェックとプレースホルダー用の Pixmap 作成 ---
+    let create_placeholder_pixmap = || {
+        let mut placeholder = Pixmap::new(expected_size, expected_size).unwrap();
+        let rect = Rect::from_xywh(0.0, 0.0, expected_size as f32, expected_size as f32).unwrap();
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(0xFF, 0x00, 0x00, 0xAA);
+        placeholder.fill_rect(rect, &paint, Transform::identity(), None);
+        placeholder
+    };
 
     if width == 0
         || height == 0
         || (bpp != 32 && bpp != 24)
         || header.biCompression != BI_RGB.0 as u32
     {
-        // プレースホルダーを描画
-        draw_placeholder_icon(pixmap, x, y, expected_size, expected_size);
-        return;
+        return create_placeholder_pixmap();
     }
 
-    // --- アイコン用の一時的な Pixmap を作成 ---
     let mut icon_pixmap = match Pixmap::new(width, height) {
         Some(pm) => pm,
-        None => {
-            draw_placeholder_icon(pixmap, x, y, expected_size, expected_size);
-            return;
-        }
+        None => return create_placeholder_pixmap(),
     };
 
     let bytes_per_pixel = (bpp / 8) as usize;
@@ -61,11 +51,11 @@ pub fn draw_icon(
     let expected_data_size = (stride * height) as usize;
 
     if pixel_data.len() < expected_data_size {
-        draw_placeholder_icon(pixmap, x, y, expected_size, expected_size);
-        return;
+        return create_placeholder_pixmap();
     }
 
-    let mut icon_pixmap_mut = icon_pixmap.as_mut(); // PixmapMut を取得
+    // --- ピクセルデータ変換 ---
+    let mut icon_pixmap_mut = icon_pixmap.as_mut();
     for y_dest in 0..height {
         for x_dest in 0..width {
             let src_row_index = if is_top_down {
@@ -79,9 +69,7 @@ pub fn draw_icon(
                 continue;
             }
 
-            // スライスから直接読み取る
             let src_pixel_bytes = &pixel_data[src_offset..src_offset + bytes_per_pixel];
-
             let b_p = src_pixel_bytes[0];
             let g_p = src_pixel_bytes[1];
             let r_p = src_pixel_bytes[2];
@@ -91,27 +79,40 @@ pub fn draw_icon(
                 255
             };
 
-            // u16 に拡張して計算
-            let r_p_u16 = r_p as u16;
-            let g_p_u16 = g_p as u16;
-            let b_p_u16 = b_p as u16;
-            let a_u16 = a as u16;
-
-            // アルファチャンネルが 0 の場合、除算を避ける
             let (r, g, b) = if a > 0 {
                 (
-                    (r_p_u16 * a_u16 / 255) as u8,
-                    (g_p_u16 * a_u16 / 255) as u8,
-                    (b_p_u16 * a_u16 / 255) as u8,
+                    (r_p as u16 * a as u16 / 255) as u8,
+                    (g_p as u16 * a as u16 / 255) as u8,
+                    (b_p as u16 * a as u16 / 255) as u8,
                 )
             } else {
-                (0, 0, 0) // 透明なピクセルの場合はすべてのチャンネルを 0 に
+                (0, 0, 0)
             };
+
             if let Some(color) = PremultipliedColorU8::from_rgba(r, g, b, a) {
-                icon_pixmap_mut.pixels_mut()[(y_dest * width + x_dest) as usize] = color; // 直接インデックスアクセス
+                if let Some(pixel) = icon_pixmap_mut.pixels_mut().get_mut((y_dest * width + x_dest) as usize) {
+                    *pixel = color;
+                }
             }
         }
     }
+
+    icon_pixmap
+}
+
+/// アイコンのビットマップデータをピクセルマップに描画するよ！
+///
+/// `convert_dib_to_pixmap` ヘルパー関数を使って DIB データを `Pixmap` に変換してから、
+/// それを指定された座標 (`x`, `y`) に描画するんだ。
+pub fn draw_icon(
+    pixmap: &mut Pixmap,
+    icon_info: &BITMAPINFO,
+    pixel_data: &[u8],
+    x: u32,
+    y: u32,
+    expected_size: u32,
+) {
+    let icon_pixmap = convert_dib_to_pixmap(icon_info, pixel_data, expected_size);
 
     // --- アイコン本体の描画 ---
     let mut paint = PixmapPaint::default();

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -25,7 +25,7 @@ use crate::child_window::color_to_hex_string;
 const DOUBLE_CLICK_THRESHOLD_MS: u64 = 500;
 
 /// アイコン実行時エフェクトの表示時間 (ミリ秒)
-const EXECUTION_EFFECT_DURATION_MS: u64 = 200;
+const EXECUTION_EFFECT_DURATION_MS: u64 = 300;
 
 
 /// アプリケーション内で発生するカスタムイベント。
@@ -34,6 +34,7 @@ const EXECUTION_EFFECT_DURATION_MS: u64 = 200;
 pub enum UserEvent {
     MenuEvent(tray_icon::menu::MenuEvent),
     SettingsLoaded(HashMap<String, ChildSettings>),
+    ExecutionFinished(WindowId),
 }
 
 /// ウィンドウ全体を管理する構造体。
@@ -53,6 +54,8 @@ pub struct WindowManager {
     pub hovered_icon: Option<(WindowId, usize)>,
     /// 現在実行エフェクトを表示中のアイコンの情報。(ウィンドウID, アイコンインデックス, 開始時刻)
     executing_icon: Option<(WindowId, usize, Instant)>,
+    /// 現在実行中のタスク（アイコンのあるウィンドウID）を管理するセット
+    executing_tasks: HashSet<WindowId>,
     /// ダブルクリック判定用の最後にクリックされた時刻とウィンドウID。
     last_click: Option<(WindowId, Instant)>,
     /// 各ウィンドウちゃんの中で、最後にマウスカーソルがいた場所を覚えておくよ！アイコンの場所を特定するのに使うんだ。
@@ -117,6 +120,7 @@ impl WindowManager {
             is_resizing: WindowControl::new(), // リサイズ状態を初期化
             hovered_icon: None,                // 最初はホバーされているアイコンはない
             executing_icon: None,              // 実行エフェクトも最初はなし
+            executing_tasks: HashSet::new(),   // 実行中タスクセットを初期化
             last_click: None,                  // ダブルクリック判定情報を初期化
             last_cursor_pos: HashMap::new(),   // カーソル位置マップを空で初期化
             clipboard,
@@ -470,14 +474,20 @@ impl WindowManager {
             return;
         }
 
-        // 実行中エフェクトが時間切れになっていたら、状態をリセットして再描画を要求するよ！
+        // 実行中エフェクトが終了条件を満たしていたら、状態をリセットして再描画を要求するよ！
         let mut needs_redraw_after_effect = false;
         if let Some((win_id, _, start_time)) = self.executing_icon {
-            if win_id == *id
-                && start_time.elapsed() > Duration::from_millis(EXECUTION_EFFECT_DURATION_MS)
-            {
-                self.executing_icon = None;
-                needs_redraw_after_effect = true;
+            // エフェクト対象のウィンドウか？
+            if win_id == *id {
+                let task_finished = !self.executing_tasks.contains(&win_id);
+                let duration_elapsed =
+                    start_time.elapsed() > Duration::from_millis(EXECUTION_EFFECT_DURATION_MS);
+
+                // 「タスクが完了」していて、かつ「最低表示時間が経過」していたらエフェクト終了
+                if task_finished && duration_elapsed {
+                    self.executing_icon = None;
+                    needs_redraw_after_effect = true;
+                }
             }
         }
 
@@ -563,7 +573,7 @@ impl WindowManager {
 
     /// マウスの左クリックイベントを処理します。
     /// ダブルクリックされたかどうかをチェックして、もしダブルクリックだったら、その場所にあるアイコンを実行するよ！
-    pub fn execute_group_item(&mut self, window_id: WindowId) {
+    pub fn execute_group_item(&mut self, proxy: winit::event_loop::EventLoopProxy<UserEvent>, window_id: WindowId) {
         let now = Instant::now(); // 現在時刻を取得
         let is_double_click; // ダブルクリックフラグ
 
@@ -592,6 +602,15 @@ impl WindowManager {
             return;
         }
 
+        // すでにこのウィンドウで何かが実行中なら、何もしない
+        if self.executing_tasks.contains(&window_id) {
+            log_info(&format!(
+                "Window {:?} is already executing a task. Ignoring double click.",
+                window_id
+            ));
+            return;
+        }
+
         // ダブルクリックの場合のみ、ここから先の処理に進むよ！
         if let Some(cursor_pos) = self.last_cursor_pos.get(&window_id).cloned() {
             // カーソル位置にあるアイコンのインデックスを検索
@@ -606,8 +625,25 @@ impl WindowManager {
                         self.executing_icon = Some((window_id, icon_index, Instant::now()));
                         child.window.request_redraw();
 
-                        // IconInfo の execute メソッドを呼び出してファイル/フォルダを開く
-                        child.groups[icon_index].execute();
+                        // 実行するアイコンのパスと、通知用のプロキシをクローン
+                        let path_to_execute = child.groups[icon_index].path.clone();
+                        let thread_proxy = proxy.clone();
+
+                        // 実行中タスクとして登録
+                        self.executing_tasks.insert(window_id);
+
+                        // 別スレッドでファイル/フォルダを開く
+                        std::thread::spawn(move || {
+                            log_info(&format!("Executing path in a new thread: {:?}", path_to_execute));
+                            match open::that(&path_to_execute) {
+                                Ok(_) => log_info(&format!("Successfully opened path: {:?}", path_to_execute)),
+                                Err(e) => log_error(&format!("Failed to open path {:?}: {}", path_to_execute, e)),
+                            }
+                            // 実行が終わったらメインスレッドに通知
+                            if let Err(e) = thread_proxy.send_event(UserEvent::ExecutionFinished(window_id)) {
+                                log_error(&format!("Failed to send ExecutionFinished event: {}", e));
+                            }
+                        });
                     } else {
                         // 無効なインデックスの場合 (通常は起こらないはず)
                         log_error(&format!(
@@ -902,6 +938,20 @@ impl WindowManager {
                     child.window.request_redraw();
                 }
             }
+        }
+    }
+
+    /// アイコン実行タスクが完了したことを通知され、状態を更新するよ！
+    pub fn finish_execution(&mut self, window_id: WindowId) {
+        log_debug(&format!(
+            "Execution finished for window {:?}. Updating state.",
+            window_id
+        ));
+        // 実行中タスクセットからIDを削除
+        self.executing_tasks.remove(&window_id);
+        // エフェクトの最低表示時間を保証するために、即時再描画を要求する
+        if let Some(child) = self.children.get(&window_id) {
+            child.window.request_redraw();
         }
     }
 }

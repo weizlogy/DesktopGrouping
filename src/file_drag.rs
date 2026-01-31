@@ -80,15 +80,7 @@ impl IconInfo {
             }
         })
     }
-    /// この IconInfo が示すパスを実行（開く）します。
-    /// `open::that` を使って、関連付けられたアプリケーションでファイルやフォルダを開くよ！
-    pub fn execute(&self) {
-        log_info(&format!("Executing path: {:?}", self.path));
-        match open::that(&self.path) {
-            Ok(_) => log_info(&format!("Successfully opened path: {:?}", self.path)),
-            Err(e) => log_error(&format!("Failed to open path {:?}: {}", self.path, e)),
-        }
-    }
+
 }
 
 #[cfg(test)]
