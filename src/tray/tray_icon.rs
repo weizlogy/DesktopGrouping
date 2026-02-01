@@ -1,6 +1,6 @@
 use tray_icon::{
     Icon, TrayIcon, TrayIconBuilder,
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{Menu, MenuItem, MenuId, PredefinedMenuItem},
 };
 
 /// トレイアイコンを作成します。
@@ -16,14 +16,11 @@ pub fn create_tray() -> TrayIcon {
     // まずは、トレイアイコンに表示するメニューを作るよ！(<em>´ω｀</em>)
     let menu = Menu::new();
     // 「新しいグループを作る」メニュー項目だよ！クリックできるように true にしてるんだ♪
-    let new_group = MenuItem::new("New Group", true, None);
-    // 「アプリを終了する」メニュー項目だよ！これもクリックできるように true！
-    let quit_i = MenuItem::new("Quit", true, None);
+    let new_group = MenuItem::with_id("1001", "New Group", true, None);
+    let settings_item = MenuItem::with_id("1003", "Settings", true, None); // Settings メニュー項目
+    let quit_i = MenuItem::with_id("1002", "Quit", true, None);
 
-    // 作ったメニュー項目たちを、メニューに追加していくよ！
-    // new_group と quit_i の間には、区切り線 (セパレーター) も入れて見やすくするんだ～！(ゝω・)v
-    menu.append_items(&[&new_group, &PredefinedMenuItem::separator(), &quit_i])
-        .expect("Failed to append items");
+    menu.append_items(&[&new_group, &settings_item, &PredefinedMenuItem::separator(), &quit_i]);
 
     // よーし、いよいよトレイアイコン本体を作るよ！٩(ˊᗜˋ*)و
     return TrayIconBuilder::new()

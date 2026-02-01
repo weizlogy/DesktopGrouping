@@ -35,6 +35,7 @@ const MOUSE_WHEEL_PIXEL_TO_LINE_FACTOR: f64 = 30.0; // スクロールの変換�
 
 // トレイメニューのIDを定数化するよっ！٩(ˊᗜˋ*)و
 const MENU_ID_NEW_GROUP: &str = "1001";
+const MENU_ID_SETTINGS: &str = "1003";
 const MENU_ID_QUIT: &str = "1002";
 
 /// アプリケーションのエントリーポイント。
@@ -472,6 +473,11 @@ fn handle_user_event(
                     child_win.set_visible(true);
                     child_win.request_redraw();
                 }
+            }
+            MENU_ID_SETTINGS => {
+                // "Settings" の処理だよ！
+                log_info("MenuEvent: Settings.");
+                // ここに設定画面を開くロジックを追加予定
             }
             MENU_ID_QUIT => {
                 // "Quit" の処理だよ！
