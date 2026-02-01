@@ -21,6 +21,7 @@ use std::thread;
 // generate_child_id, ChildSettings など必要なものをインポート
 use desktop_grouping::logger; // logger モジュールをライブラリから使うよ！
 use desktop_grouping::tray::tray_icon::{MENU_ID_NEW_GROUP, MENU_ID_QUIT, MENU_ID_SETTINGS};
+use desktop_grouping::ui::settings_window::SettingsWindow;
 
 use settings::{ChildSettings, generate_child_id, get_settings_reader, get_settings_writer};
 use winit::{
@@ -483,6 +484,7 @@ fn handle_user_event(
                 // "Settings" の処理だよ！
                 log_info("MenuEvent: Settings.");
                 // ここに設定画面を開くロジックを追加予定
+                let settings_window = SettingsWindow::new();
             }
             MENU_ID_QUIT => {
                 // "Quit" の処理だよ！

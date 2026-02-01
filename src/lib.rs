@@ -1,6 +1,7 @@
 pub mod graphics;
 pub mod logger;
 pub mod tray;
+pub mod ui;
 /// モジュール化の方法
 ///   - フォルダーを用意する（ex: test/）
 ///   - モジュールの実装ファイルを作る（ex: test1.rs）
