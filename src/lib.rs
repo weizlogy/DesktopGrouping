@@ -1,5 +1,6 @@
 pub mod graphics;
 pub mod logger;
+pub mod settings;
 pub mod tray;
 pub mod ui;
 /// モジュール化の方法

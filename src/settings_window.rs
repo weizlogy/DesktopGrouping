@@ -1,13 +1,12 @@
-// src/ui/settings_window.rs
+// src/settings_window.rs
 use std::rc::Rc;
 
 use winit::{
     dpi::PhysicalSize,
     window::Window,
 };
-use tiny_skia::Color; // Color を使うために必要
 
-use crate::graphics::{self, graphics::MyGraphics};
+use desktop_grouping::graphics::{self, graphics::MyGraphics};
 use crate::logger::*;
 // settings モジュールから設定を読み書きするために必要
 use crate::settings::{get_settings_reader, get_settings_writer, save_settings};
@@ -50,19 +49,21 @@ impl SettingsWindow {
         self.graphics.draw_start();
         // TODO: ここに設定項目を描画するロジックを追加
         // 例えば、テキストを描画したり、簡単なUI要素を描画したり
-        // self.graphics.draw_text_with_bg( // このメソッドは存在しないので修正
-        crate::graphics::drawing::draw_text( // drawing モジュールの draw_text を使う
-            &mut self.graphics.pixmap, // pixmap を渡す
-            &self.graphics.font,      // font を渡す
-            24.0,                     // text_font_size は直接指定
+        self.graphics.draw_text_with_bg(
             "設定",
             10.0,
             10.0,
-            self.graphics.width as f32 - 20.0, // max_text_width は適当な値を設定
-            24.0,                     // text_height は直接指定
+            24.0,
+            graphics::parse_color("#FFFFFFFF").unwrap(), // 白いテキスト
+            graphics::parse_color("#00000000").unwrap(), // 透明な背景
+            false // 枠線なし
         );
+
         self.graphics.draw_finish();
     }
+
+    // `child_window.rs` から `color_to_hex_string` を拝借
+    // 後で適切な場所に移動するか、`graphics` モジュールに含める
 }
 
 // `child_window.rs` からコピー
@@ -75,3 +76,4 @@ pub fn color_to_hex_string(color: tiny_skia::Color) -> String {
         (color.alpha() * 255.0) as u8
     )
 }
+

@@ -57,6 +57,8 @@ fn main() {
     let clipboard = Clipboard::new().ok(); // エラーは許容する (None になる)
     let mut manager = mywindow::WindowManager::new(clipboard); // new に引数を追加
 
+    let mut settings_window: Option<SettingsWindow> = None; // 設定ウィンドウを管理する変数
+
     // --- 設定読み込みを別スレッドで開始 ---
     let settings_proxy = event_loop.create_proxy();
     thread::spawn(move || {
@@ -93,15 +95,49 @@ fn main() {
             match event {
                 // Init イベントでは何もしないよ！代わりに UserEvent でウィンドウを作るからね！
                 Event::NewEvents(StartCause::Init) => {}
-                Event::WindowEvent { event, window_id } => handle_window_event(
-                    event_loop_proxy.clone(),
-                    target,
-                    &mut manager,
-                    event,
-                    window_id,
-                ),
+                Event::WindowEvent { event, window_id } => {
+                    // --- 設定ウィンドウのイベント処理 ---
+                    if let Some(sw) = &mut settings_window {
+                        if sw.window.id() == window_id {
+                            match event {
+                                WindowEvent::CloseRequested => {
+                                    log_info("Settings window close requested. Hiding window.");
+                                    sw.window.set_visible(false); // 閉じる代わりに非表示にする
+                                    return; // これ以上イベントを処理しない
+                                }
+                                WindowEvent::Resized(size) => {
+                                    sw.resize_graphics(size);
+                                    sw.window.request_redraw();
+                                    return;
+                                }
+                                WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                                    sw.update_scale_factor(scale_factor);
+                                    sw.window.request_redraw();
+                                    return;
+                                }
+                                WindowEvent::RedrawRequested => {
+                                    sw.draw();
+                                    return;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+
+                    // manager が管理していないウィンドウからのイベントは無視 (ChildWindow 以外)
+                    if !manager.has_window(&window_id) {
+                        return;
+                    }
+                    handle_window_event(
+                        event_loop_proxy.clone(),
+                        target,
+                        &mut manager,
+                        event,
+                        window_id,
+                    )
+                }
                 Event::DeviceEvent { event, .. } => handle_device_event(&mut manager, event),
-                Event::UserEvent(user_event) => handle_user_event(target, &mut manager, user_event),
+                Event::UserEvent(user_event) => handle_user_event(target, &mut manager, user_event, &mut settings_window),
                 // アプリケーションが終了する直前のイベントだよ！
                 Event::LoopExiting => {
                     log_info("Exiting application...");
@@ -431,6 +467,7 @@ fn handle_user_event(
     target: &winit::event_loop::EventLoopWindowTarget<UserEvent>,
     manager: &mut mywindow::WindowManager,
     user_event: UserEvent,
+    settings_window: &mut Option<SettingsWindow>, // SettingsWindow の可変参照を受け取る
 ) {
     match user_event {
         UserEvent::SettingsLoaded(children) => {
@@ -483,8 +520,27 @@ fn handle_user_event(
             MENU_ID_SETTINGS => {
                 // "Settings" の処理だよ！
                 log_info("MenuEvent: Settings.");
-                // ここに設定画面を開くロジックを追加予定
-                let settings_window = SettingsWindow::new();
+                if settings_window.is_none() {
+                    // 設定ウィンドウがまだ作成されていなければ作成
+                    let new_settings_window = window_utils::create_settings_window(target);
+                    let settings_rc = Rc::new(new_settings_window);
+                    let mut settings_win_instance = SettingsWindow::new(settings_rc.clone());
+                    // 初期描画を要求
+                    settings_win_instance.window.request_redraw();
+                    settings_win_instance.window.set_visible(true); // ウィンドウを表示
+                    *settings_window = Some(settings_win_instance);
+                    log_info("Settings window created and shown.");
+                } else if let Some(sw) = settings_window {
+                    // 既に存在する場合は表示を切り替えるか、手前に持ってくる
+                    if sw.window.is_visible().unwrap_or(false) {
+                        sw.window.set_visible(false); // 非表示にする
+                        log_info("Settings window hidden.");
+                    } else {
+                        sw.window.set_visible(true); // 表示する
+                        sw.window.focus_window(); // フォーカスを当てる
+                        log_info("Settings window shown and focused.");
+                    }
+                }
             }
             MENU_ID_QUIT => {
                 // "Quit" の処理だよ！

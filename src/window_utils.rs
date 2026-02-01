@@ -97,6 +97,29 @@ pub fn show_confirmation_dialog() -> bool {
     result == IDYES
 }
 
+/// 設定ウィンドウを作成します。
+///
+/// # 引数
+/// * `event_loop_target` - ウィンドウを作成するためのイベントループターゲットだよ！
+///
+/// # 戻り値
+/// 作成された `winit::window::Window` インスタンス。
+pub fn create_settings_window(event_loop_target: &EventLoopWindowTarget<UserEvent>) -> Window {
+    let window = WindowBuilder::new()
+        .with_title("設定")
+        .with_visible(false)
+        .with_active(true) // 初期はアクティブにする
+        .with_skip_taskbar(false) // タスクバーに表示
+        .with_resizable(false) // サイズ変更不可
+        .with_transparent(false) // 透明にしない
+        .with_decorations(true) // タイトルバーと枠線あり
+        .with_inner_size(PhysicalSize::new(800, 600)) // 初期サイズ
+        .build(event_loop_target)
+        .expect("設定ウィンドウの作成に失敗しました");
+
+    window
+}
+
 #[cfg(test)]
 mod tests {
     // use super::*; // window_utils.rs の中身をぜーんぶ使えるようにするおまじない！
