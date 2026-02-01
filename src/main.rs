@@ -137,7 +137,9 @@ fn main() {
                     )
                 }
                 Event::DeviceEvent { event, .. } => handle_device_event(&mut manager, event),
-                Event::UserEvent(user_event) => handle_user_event(target, &mut manager, user_event, &mut settings_window),
+                Event::UserEvent(user_event) => {
+                    handle_user_event(target, &mut manager, user_event, &mut settings_window)
+                }
                 // アプリケーションが終了する直前のイベントだよ！
                 Event::LoopExiting => {
                     log_info("Exiting application...");
@@ -524,7 +526,7 @@ fn handle_user_event(
                     // 設定ウィンドウがまだ作成されていなければ作成
                     let new_settings_window = window_utils::create_settings_window(target);
                     let settings_rc = Rc::new(new_settings_window);
-                    let mut settings_win_instance = SettingsWindow::new(settings_rc.clone());
+                    let settings_win_instance = SettingsWindow::new(settings_rc.clone());
                     // 初期描画を要求
                     settings_win_instance.window.request_redraw();
                     settings_win_instance.window.set_visible(true); // ウィンドウを表示

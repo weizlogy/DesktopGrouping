@@ -12,7 +12,7 @@ A simple and intuitive application to organize your desktop icons into groups.
   - `Right-click` the tray icon and select `New Group`.
 - **Drag & Drop**: Easily add files and shortcuts to groups by dragging and dropping them.
 - **Launch Items**:
-  - `Left-click` an icon to launch the application or open the file.
+  - `Left-double-click` an icon to launch the application or open the file.
   - `Right-click` an icon to open its containing folder.
 - **Customization**:
   - **Move**: `Ctrl + Drag` a group to move it.
