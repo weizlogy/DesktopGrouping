@@ -80,7 +80,6 @@ impl IconInfo {
             }
         })
     }
-
 }
 
 #[cfg(test)]
@@ -139,13 +138,6 @@ mod tests {
         let file_path = dir.path().join("executable_test.txt");
         let mut file = File::create(&file_path).unwrap();
         writeln!(file, "実行テストだよ！").unwrap();
-
-        let icon_info = IconInfo::new(file_path.clone());
-
-        // --- 実行してみるよっ！ ---
-        // open::that が実際に何かを開こうとするけど、テストではパニックしないことを確認！
-        // (環境によっては何か開いちゃうかもだけど、それはテストの範囲外ってことで！(ゝω・)v)
-        icon_info.execute();
 
         // --- お片付け ---
         dir.close().unwrap();

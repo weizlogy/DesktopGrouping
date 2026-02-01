@@ -11,15 +11,16 @@ mod window_utils; // 便利屋さんのお家も教えてあげる！
 use arboard::Clipboard;
 use desktop_grouping::tray::tray_icon::create_tray;
 use file_drag::IconInfo;
-use logger::{log_debug, log_info, log_warn, log_error};
-use mywindow::generate_random_color_hex;
+use logger::{log_debug, log_error, log_info, log_warn};
 use mywindow::UserEvent;
+use mywindow::generate_random_color_hex;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::thread;
 
 // generate_child_id, ChildSettings など必要なものをインポート
 use desktop_grouping::logger; // logger モジュールをライブラリから使うよ！
+use desktop_grouping::tray::tray_icon::{MENU_ID_NEW_GROUP, MENU_ID_QUIT, MENU_ID_SETTINGS};
 
 use settings::{ChildSettings, generate_child_id, get_settings_reader, get_settings_writer};
 use winit::{
@@ -32,11 +33,6 @@ use winit::{
 };
 
 const MOUSE_WHEEL_PIXEL_TO_LINE_FACTOR: f64 = 30.0; // スクロールの変換係数 (環境に合わせて調整)
-
-// トレイメニューのIDを定数化するよっ！٩(ˊᗜˋ*)و
-const MENU_ID_NEW_GROUP: &str = "1001";
-const MENU_ID_SETTINGS: &str = "1003";
-const MENU_ID_QUIT: &str = "1002";
 
 /// アプリケーションのエントリーポイント。
 ///
@@ -66,7 +62,10 @@ fn main() {
         log_info("Starting settings loading thread...");
         // get_settings_reader() を呼ぶと、中で LazyLock が動いてファイルI/Oが発生するよ！
         let children = get_settings_reader().children.clone();
-        log_info(&format!("Settings loaded. Found {} child window configurations.", children.len()));
+        log_info(&format!(
+            "Settings loaded. Found {} child window configurations.",
+            children.len()
+        ));
         // 読み込みが終わったら、メインスレッドに結果を伝えるイベントを送るんだ。
         if let Err(e) = settings_proxy.send_event(UserEvent::SettingsLoaded(children)) {
             log_error(&format!("Failed to send SettingsLoaded event: {}", e));
@@ -93,9 +92,13 @@ fn main() {
             match event {
                 // Init イベントでは何もしないよ！代わりに UserEvent でウィンドウを作るからね！
                 Event::NewEvents(StartCause::Init) => {}
-                Event::WindowEvent { event, window_id } => {
-                    handle_window_event(event_loop_proxy.clone(), target, &mut manager, event, window_id)
-                }
+                Event::WindowEvent { event, window_id } => handle_window_event(
+                    event_loop_proxy.clone(),
+                    target,
+                    &mut manager,
+                    event,
+                    window_id,
+                ),
                 Event::DeviceEvent { event, .. } => handle_device_event(&mut manager, event),
                 Event::UserEvent(user_event) => handle_user_event(target, &mut manager, user_event),
                 // アプリケーションが終了する直前のイベントだよ！
@@ -171,8 +174,11 @@ fn create_windows_from_settings(
                     let monitor_bottom = monitor_pos.y + monitor_size.height as i32;
 
                     // ウィンドウの左上がモニター内に入っているか簡易チェック
-                    if initial_position.x >= monitor_pos.x && initial_position.x < monitor_right &&
-                       initial_position.y >= monitor_pos.y && initial_position.y < monitor_bottom {
+                    if initial_position.x >= monitor_pos.x
+                        && initial_position.x < monitor_right
+                        && initial_position.y >= monitor_pos.y
+                        && initial_position.y < monitor_bottom
+                    {
                         position_is_visible = true;
                         break;
                     }
@@ -212,8 +218,7 @@ fn create_windows_from_settings(
         let mut effective_settings = child_setting.clone();
         effective_settings.x = initial_position.x;
         effective_settings.y = initial_position.y;
-        let child_window =
-            window_utils::create_child_window(&target, Some(&effective_settings)); // 便利屋さんにお願い！
+        let child_window = window_utils::create_child_window(&target, Some(&effective_settings)); // 便利屋さんにお願い！
         let child_window_id = child_window.id();
 
         // アイコン復元処理だよっ！
