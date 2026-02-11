@@ -102,7 +102,7 @@ impl SettingsWindow {
                     &self.graphics.font,
                     text_font_size * 1.1, // ###見出しは##より少し小さく
                     &cleaned_title,
-                    base_start_x - 300.0, // ###見出しは少しインデント
+                    base_start_x, // ###見出しは少しインデント
                     current_y,
                     max_width,
                     line_height * 1.1,

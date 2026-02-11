@@ -182,9 +182,8 @@ pub fn draw_text(
         final_text_width = calculate_text_width(&text_to_draw, font, scale);
     }
 
-    // --- 描画開始位置の中央揃え計算 ---
-    let center_x = startx + max_width / 2.0;
-    let adjusted_start_x = center_x - final_text_width / 2.0;
+    // --- 描画開始位置の左寄せ計算 ---
+    let adjusted_start_x = startx; // 左寄せにするため、startx をそのまま使用
 
     // --- 垂直位置の計算 ---
     // starty をベースラインとして扱うよ。
