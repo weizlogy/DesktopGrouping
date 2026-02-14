@@ -4,8 +4,6 @@ use windows::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFO};
 
 use super::layout::calculate_text_width;
 
-
-
 /// アイコンのビットマップデータを `Pixmap` に変換するよ！
 ///
 /// Windows の BITMAPINFO ヘッダー (`icon_info`) とピクセルデータ (`pixel_data`) をもらって、
@@ -90,7 +88,10 @@ pub fn convert_dib_to_pixmap(
             };
 
             if let Some(color) = PremultipliedColorU8::from_rgba(r, g, b, a) {
-                if let Some(pixel) = icon_pixmap_mut.pixels_mut().get_mut((y_dest * width + x_dest) as usize) {
+                if let Some(pixel) = icon_pixmap_mut
+                    .pixels_mut()
+                    .get_mut((y_dest * width + x_dest) as usize)
+                {
                     *pixel = color;
                 }
             }
@@ -182,8 +183,9 @@ pub fn draw_text(
         final_text_width = calculate_text_width(&text_to_draw, font, scale);
     }
 
-    // --- 描画開始位置の左寄せ計算 ---
-    let adjusted_start_x = startx; // 左寄せにするため、startx をそのまま使用
+    // --- 描画開始位置の中央揃え計算 ---
+    let center_x = startx + max_width / 2.0;
+    let adjusted_start_x = center_x - final_text_width / 2.0;
 
     // --- 垂直位置の計算 ---
     // starty をベースラインとして扱うよ。
@@ -192,8 +194,8 @@ pub fn draw_text(
 
     // --- グリフ描画時の設定を改善
     let mut paint = PixmapPaint::default();
-    paint.quality = tiny_skia::FilterQuality::Bilinear;  // Bicubicだと時々過剰になるのでBilinearに
-    paint.blend_mode = tiny_skia::BlendMode::SourceOver;  // アルファブレンディングの改善
+    paint.quality = tiny_skia::FilterQuality::Bilinear; // Bicubicだと時々過剰になるのでBilinearに
+    paint.blend_mode = tiny_skia::BlendMode::SourceOver; // アルファブレンディングの改善
 
     // --- 描画ループ ---
     let mut caret = point(adjusted_start_x, baseline_y);
@@ -240,15 +242,18 @@ pub fn draw_text(
             outline.draw(|dx, dy, coverage| {
                 if coverage > 0.0 {
                     // 2. γ補正を少し緩めに
-                    let gamma = 1.4;  // 1.8→1.4に調整
+                    let gamma = 1.4; // 1.8→1.4に調整
                     let final_alpha = coverage.powf(1.0 / gamma);
-                    
+
                     // 3. 最終的な透明度をちょっと下げる
-                    let opacity = 0.85;  // 不透明度を85%に
+                    let opacity = 0.85; // 不透明度を85%に
                     let a_u8 = ((final_alpha * 255.0 * opacity) as u8).min(255);
 
                     if let Some(color) = PremultipliedColorU8::from_rgba(0, 0, 0, a_u8) {
-                        if let Some(pixel) = glyph_pixmap.pixels_mut().get_mut((dy * glyph_width + dx) as usize) {
+                        if let Some(pixel) = glyph_pixmap
+                            .pixels_mut()
+                            .get_mut((dy * glyph_width + dx) as usize)
+                        {
                             *pixel = color;
                         }
                     }
