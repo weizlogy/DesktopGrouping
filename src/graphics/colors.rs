@@ -44,61 +44,6 @@ pub fn clamp_alpha(mut color: Color) -> Color {
     color
 }
 
-/// ユーザーが指定した基本色から、いい感じのグラデーションの開始色と終了色を計算するよ！
-///
-/// 1. **HSLに変換**: まず、扱いやすいようにRGBからHSL（色相・彩度・輝度）に変換するんだ。
-/// 2. **輝度をチェック**:
-///    - もし色がすごく明るかったら（輝度 > 75%）、終了色をちょっと暗くするよ。
-///    - もし色がすごく暗かったら（輝度 < 25%）、終了色をちょっと明るくするよ。
-///    - 中くらいの色だったら、深みを出すためにちょっと暗くする方向に調整するんだ。
-/// 3. **彩度を調整**: のっぺりしないように、終了色の彩度を少しだけ下げるよ。
-/// 4. **アルファ値も調整**: 開始色は基本色のアルファ値をそのまま使い、終了色は少しだけ不透明度を上げることで、奥行き感を出すんだ。
-///
-/// これで、どんな色が来てもいい感じのグラデーションが作れるはず！✨
-pub fn create_gradient_colors(base_color: Color) -> (Color, Color) {
-    // tiny_skia::Color を colorsys::Rgb に変換
-    let base_rgb = Rgb::new(
-        base_color.red() as f64 * 255.0,
-        base_color.green() as f64 * 255.0,
-        base_color.blue() as f64 * 255.0,
-        None, // Alphaはここでは使わない
-    );
-
-    let hsl: Hsl = base_rgb.into();
-    let lightness = hsl.lightness();
-
-    let mut end_hsl = hsl.clone();
-
-    if lightness > 75.0 {
-        // 明るい色 -> 少し暗くする
-        end_hsl.set_lightness(lightness - 15.0);
-    } else if lightness < 25.0 {
-        // 暗い色 -> 少し明るくする
-        end_hsl.set_lightness(lightness + 15.0);
-    } else {
-        // 中間の色 -> より暗くする（例）
-        end_hsl.set_lightness(lightness - 10.0);
-    }
-
-    // 彩度も少し調整して、より自然な見た目に
-    end_hsl.set_saturation(hsl.saturation() * 0.9);
-
-    let end_rgb: Rgb = end_hsl.into();
-
-    // 開始色は元のアルファ値を保持
-    let start_color = base_color;
-    // 終了色は元のアルファ値に少し足して、より不透明にする
-    let end_color = Color::from_rgba(
-        end_rgb.red() as f32 / 255.0,
-        end_rgb.green() as f32 / 255.0,
-        end_rgb.blue() as f32 / 255.0,
-        (base_color.alpha() + 0.1).clamp(0.0, 1.0), // アルファ値を少し加算
-    )
-    .unwrap();
-
-    (start_color, end_color)
-}
-
 /// 背景色に基づいてホバー時の塗りつぶし色を計算するよ！
 ///
 /// 背景色をHSLに変換して、輝度と彩度を調整し、半透明の強調色を生成するんだ。

@@ -3,8 +3,8 @@ use std::{num::NonZeroU32, rc::Rc};
 use ab_glyph::FontRef;
 use softbuffer::{Context, Surface as SoftSurface};
 use tiny_skia::{
-    Color, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, PixmapPaint, Point, Rect, Shader,
-    SpreadMode, Transform, FillRule,
+    Color, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Shader,
+    Transform, FillRule,
 };
 use windows::Win32::Graphics::Gdi::BITMAPINFO;
 use winit::{dpi::PhysicalSize, window::Window};
@@ -274,41 +274,13 @@ impl MyGraphics {
 
         // --- 角丸背景の描画 ---
         if let Some(bg_path) = main_path {
-            let base_color = self.get_background_color();
-            let (start_color, end_color) = colors::create_gradient_colors(base_color);
-            let w = self.width as f32;
-            let h = self.height as f32;
-
-            if let Some(gradient) = LinearGradient::new(
-                Point::from_xy(0.0, 0.0),
-                Point::from_xy(w, h),
-                vec![
-                    GradientStop::new(0.0, start_color),
-                    GradientStop::new(1.0, end_color),
-                ],
-                SpreadMode::Pad,
+            self.pixmap.fill_path(
+                &bg_path,
+                &self.background_paint,
+                FillRule::Winding,
                 Transform::identity(),
-            ) {
-                let mut gradient_paint = Paint::default();
-                gradient_paint.shader = gradient;
-                gradient_paint.anti_alias = true;
-                self.pixmap.fill_path(
-                    &bg_path,
-                    &gradient_paint,
-                    FillRule::Winding,
-                    Transform::identity(),
-                    None,
-                );
-            } else {
-                // グラデーション失敗時は単色で塗りつぶし
-                self.pixmap.fill_path(
-                    &bg_path,
-                    &self.background_paint,
-                    FillRule::Winding,
-                    Transform::identity(),
-                    None,
-                );
-            }
+                None,
+            );
         }
     }
 
