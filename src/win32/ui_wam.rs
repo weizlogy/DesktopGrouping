@@ -1,9 +1,6 @@
 use windows::Win32::{
     Foundation::{BOOL, HWND},
-    Graphics::Dwm::{
-        DWMWA_TRANSITIONS_FORCEDISABLED, DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
-    },
-    UI::Controls::MARGINS,
+    Graphics::Dwm::{DWMWA_TRANSITIONS_FORCEDISABLED, DwmSetWindowAttribute},
     UI::WindowsAndMessaging::{
         HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSENDCHANGING, SWP_NOSIZE, SetWindowPos,
     },
@@ -67,13 +64,17 @@ pub fn enable_dwm_composition(window: &Window) {
             std::mem::size_of::<BOOL>() as u32,
         );
 
-        // 余白を -1 に設定すると、ウィンドウ全体が透過対象になるんだよ！
-        let margins = MARGINS {
-            cxLeftWidth: -1,
-            cxRightWidth: -1,
-            cyTopHeight: -1,
-            cyBottomHeight: -1,
-        };
-        let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+        // DwmExtendFrameIntoClientAreaを使うとタイトルバーのボタンが
+        // 表示されてしまうので使わないこと
+        /*
+           // 余白を -1 に設定すると、ウィンドウ全体が透過対象になるんだよ！
+           let margins = MARGINS {
+               cxLeftWidth: -1,
+               cxRightWidth: -1,
+               cyTopHeight: -1,
+               cyBottomHeight: -1,
+           };
+           let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+        */
     }
 }
