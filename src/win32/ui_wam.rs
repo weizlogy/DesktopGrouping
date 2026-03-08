@@ -1,5 +1,9 @@
 use windows::Win32::{
-    Foundation::HWND,
+    Foundation::{BOOL, HWND},
+    Graphics::Dwm::{
+        DWMWA_TRANSITIONS_FORCEDISABLED, DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
+    },
+    UI::Controls::MARGINS,
     UI::WindowsAndMessaging::{
         HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSENDCHANGING, SWP_NOSIZE, SetWindowPos,
     },
@@ -43,5 +47,33 @@ pub fn set_window_pos_to_bottom(window: &Window) {
             // 位置やサイズは変えないで、アクティブにもしないで、ただ一番後ろに送るだけ！っていうフラグだよ♪
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOSENDCHANGING,
         );
+    }
+}
+
+/// DWM (Desktop Window Manager) によるウィンドウのコンポジション（透過処理とか）を有効にするよ！
+/// これを使うと、ウィンドウ全体をきれいに透過させたりできるんだ。(๑•̀ㅂ•́)و✧
+///
+/// # 引数
+/// * `window` - DWM コンポジションを有効にしたい `winit::window::Window` の参照だよ。
+pub fn enable_dwm_composition(window: &Window) {
+    let hwnd = handle_from_window(window);
+    unsafe {
+        // ウィンドウのアニメーション（最小化・最大化とか）を無効にするよ。
+        // これをやると、リサイズとかの時のチラつきが抑えられるんだ！
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_TRANSITIONS_FORCEDISABLED,
+            &BOOL::from(true) as *const _ as *const _,
+            std::mem::size_of::<BOOL>() as u32,
+        );
+
+        // 余白を -1 に設定すると、ウィンドウ全体が透過対象になるんだよ！
+        let margins = MARGINS {
+            cxLeftWidth: -1,
+            cxRightWidth: -1,
+            cyTopHeight: -1,
+            cyBottomHeight: -1,
+        };
+        let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
     }
 }

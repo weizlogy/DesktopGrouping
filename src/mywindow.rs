@@ -168,6 +168,9 @@ impl WindowManager {
         // ★設定情報を受け取るように変更
         settings: &ChildSettings,
     ) {
+        // DWM コンポジションを有効にするよ！(๑•̀ㅂ•́)و✧
+        ui_wam::enable_dwm_composition(&window);
+
         // ChildWindow::new に色情報を渡す
         self.children.insert(
             *id,

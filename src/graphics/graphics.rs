@@ -387,38 +387,25 @@ impl MyGraphics {
     /// これまでピクセルマップに描画してきた内容を、実際にウィンドウに表示するよ！
     ///
     /// `soft_surface` からウィンドウのバッファを取得して、`self.pixmap` の内容をそこにコピーするんだ。
-    /// ピクセルフォーマット (RGBA とか ARGB とか) の違いも、ここで吸収してるみたいだね！
+    /// DWM 方式では、事前乗算済みアルファ (premultiplied alpha) をそのまま使うから、
+    /// 以前のような複雑な変換はもう必要ないんだよ！すっごく速くなるね！(๑•̀ㅂ•́)و✧
     pub fn draw_finish(&mut self) {
         let mut buffer = self
             .soft_surface
             .buffer_mut()
             .expect("Failed to get buffer");
 
-        // Pixmap のデータ (事前乗算済みアルファ RGBA) を softbuffer のバッファ (非乗算アルファ ARGB) にコピーします。
+        // Pixmap のデータ (事前乗算済みアルファ RGBA) を ARGB 形式に変換してコピー
         let pixmap_data = self.pixmap.data();
         for (i, pixel) in buffer.iter_mut().enumerate() {
-            // tiny_skia は事前乗算済みアルファ (premultiplied alpha) を使用します。
-            let r_p = pixmap_data[i * 4 + 0];
-            let g_p = pixmap_data[i * 4 + 1];
-            let b_p = pixmap_data[i * 4 + 2];
+            // tiny_skia は [R, G, B, A] の順でデータを持ってるよ。
+            let r = pixmap_data[i * 4 + 0];
+            let g = pixmap_data[i * 4 + 1];
+            let b = pixmap_data[i * 4 + 2];
             let a = pixmap_data[i * 4 + 3];
 
-            // softbuffer は非乗算アルファ (straight alpha) を期待するため、色を元に戻す必要があります。
-            let (r, g, b) = if a > 0 {
-                // a で割る前に r_p, g_p, b_p を f32 にキャスト
-                let r_u32 = (r_p as f32 * 255.0 / a as f32) as u32;
-                let g_u32 = (g_p as f32 * 255.0 / a as f32) as u32;
-                let b_u32 = (b_p as f32 * 255.0 / a as f32) as u32;
-                // clamp で 0-255 の範囲に収める
-                let r_u8 = r_u32.clamp(0, 255) as u8;
-                let g_u8 = g_u32.clamp(0, 255) as u8;
-                let b_u8 = b_u32.clamp(0, 255) as u8;
-                (r_u8, g_u8, b_u8)
-            } else {
-                (0, 0, 0) // アルファが 0 なら RGB も 0 に
-            };
-
-            // softbuffer が期待する u32 (0xAARRGGBB) 形式に変換してピクセルを書き込みます。
+            // DWM は 0xAARRGGBB 形式で、かつアルファが事前乗算されていることを期待するんだ。
+            // tiny_skia のデータは最初から事前乗算されてるから、そのまま並べ替えるだけでOK！
             *pixel = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
         }
 
