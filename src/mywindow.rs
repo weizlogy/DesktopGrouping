@@ -27,7 +27,6 @@ const DOUBLE_CLICK_THRESHOLD_MS: u64 = 500;
 /// アイコン実行時エフェクトの表示時間 (ミリ秒)
 const EXECUTION_EFFECT_DURATION_MS: u64 = 300;
 
-
 /// アプリケーション内で発生するカスタムイベント。
 /// トレイメニューからのイベントと、設定読み込み完了イベントがあるよ！
 #[derive(Debug)]
@@ -168,14 +167,9 @@ impl WindowManager {
         // ★設定情報を受け取るように変更
         settings: &ChildSettings,
     ) {
-        // DWM コンポジションを有効にするよ！(๑•̀ㅂ•́)و✧
-        ui_wam::enable_dwm_composition(&window);
-
         // ChildWindow::new に色情報を渡す
-        self.children.insert(
-            *id,
-            ChildWindow::new(window, id_str, &settings.bg_color),
-        );
+        self.children
+            .insert(*id, ChildWindow::new(window, id_str, &settings.bg_color));
     }
 
     /// Ctrl+V ペーストイベントを処理します。
@@ -297,8 +291,11 @@ impl WindowManager {
                             let monitor_bottom = monitor_pos.y + monitor_size.height as i32;
 
                             // ウィンドウの左上 (pos.x, pos.y) がこのモニターの範囲内にあるかチェック！
-                            if pos.x >= monitor_pos.x && pos.x < monitor_right &&
-                               pos.y >= monitor_pos.y && pos.y < monitor_bottom {
+                            if pos.x >= monitor_pos.x
+                                && pos.x < monitor_right
+                                && pos.y >= monitor_pos.y
+                                && pos.y < monitor_bottom
+                            {
                                 belonging_monitor = Some(monitor);
                                 break; // 見つかったからループを抜けるよ！
                             }
@@ -342,7 +339,10 @@ impl WindowManager {
                     .collect();
                 log_debug(&format!("Updated settings in memory for window {}", id_str));
             } else {
-                log_error(&format!("設定更新時にエントリが見つかりません (id_str: {})", id_str));
+                log_error(&format!(
+                    "設定更新時にエントリが見つかりません (id_str: {})",
+                    id_str
+                ));
             }
         }
         // --- ここではファイルに保存しない！ ---
@@ -576,7 +576,11 @@ impl WindowManager {
 
     /// マウスの左クリックイベントを処理します。
     /// ダブルクリックされたかどうかをチェックして、もしダブルクリックだったら、その場所にあるアイコンを実行するよ！
-    pub fn execute_group_item(&mut self, proxy: winit::event_loop::EventLoopProxy<UserEvent>, window_id: WindowId) {
+    pub fn execute_group_item(
+        &mut self,
+        proxy: winit::event_loop::EventLoopProxy<UserEvent>,
+        window_id: WindowId,
+    ) {
         let now = Instant::now(); // 現在時刻を取得
         let is_double_click; // ダブルクリックフラグ
 
@@ -637,14 +641,28 @@ impl WindowManager {
 
                         // 別スレッドでファイル/フォルダを開く
                         std::thread::spawn(move || {
-                            log_info(&format!("Executing path in a new thread: {:?}", path_to_execute));
+                            log_info(&format!(
+                                "Executing path in a new thread: {:?}",
+                                path_to_execute
+                            ));
                             match open::that(&path_to_execute) {
-                                Ok(_) => log_info(&format!("Successfully opened path: {:?}", path_to_execute)),
-                                Err(e) => log_error(&format!("Failed to open path {:?}: {}", path_to_execute, e)),
+                                Ok(_) => log_info(&format!(
+                                    "Successfully opened path: {:?}",
+                                    path_to_execute
+                                )),
+                                Err(e) => log_error(&format!(
+                                    "Failed to open path {:?}: {}",
+                                    path_to_execute, e
+                                )),
                             }
                             // 実行が終わったらメインスレッドに通知
-                            if let Err(e) = thread_proxy.send_event(UserEvent::ExecutionFinished(window_id)) {
-                                log_error(&format!("Failed to send ExecutionFinished event: {}", e));
+                            if let Err(e) =
+                                thread_proxy.send_event(UserEvent::ExecutionFinished(window_id))
+                            {
+                                log_error(&format!(
+                                    "Failed to send ExecutionFinished event: {}",
+                                    e
+                                ));
                             }
                         });
                     } else {

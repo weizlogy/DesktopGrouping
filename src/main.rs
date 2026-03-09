@@ -257,7 +257,11 @@ fn create_windows_from_settings(
         let mut effective_settings = child_setting.clone();
         effective_settings.x = initial_position.x;
         effective_settings.y = initial_position.y;
-        let child_window = window_utils::create_child_window(&target, Some(&effective_settings)); // 便利屋さんにお願い！
+        let child_window = window_utils::create_child_window(
+            &target,
+            Some(&effective_settings),
+            &child_setting.bg_color,
+        ); // 便利屋さんにお願い！
         let child_window_id = child_window.id();
 
         // アイコン復元処理だよっ！
@@ -274,9 +278,10 @@ fn create_windows_from_settings(
         manager.restore_icons(&child_window_id, &child_setting.icons);
         manager.backmost(&child_window_id);
 
-        if let Some(child_win) = manager.get_window_ref(&child_window_id) {
-            child_win.set_visible(true);
-            child_win.request_redraw();
+        if let Some(child) = manager.get_child_window_mut(&child_window_id) {
+            child.window.set_visible(true);
+            // 可視化した直後に DWM 設定を再適用し, 強制的に更新させるよ！
+            child.refresh_background();
         }
     }
 }
@@ -500,8 +505,11 @@ fn handle_user_event(
                         new_id_str
                     ));
                 }
-                let child_window =
-                    window_utils::create_child_window(target, Some(&default_settings)); // 便利屋さんにお願い！
+                let child_window = window_utils::create_child_window(
+                    target,
+                    Some(&default_settings),
+                    &default_settings.bg_color,
+                ); // 便利屋さんにお願い！
                 let child_window_id = child_window.id();
                 manager.insert(
                     &child_window_id,
@@ -514,9 +522,10 @@ fn handle_user_event(
                 manager.settings_are_dirty = true;
 
                 manager.backmost(&child_window_id);
-                if let Some(child_win) = manager.get_window_ref(&child_window_id) {
-                    child_win.set_visible(true);
-                    child_win.request_redraw();
+                if let Some(child) = manager.get_child_window_mut(&child_window_id) {
+                    child.window.set_visible(true);
+                    // 可視化した直後に DWM 設定を再適用し, 強制的に更新させるよ！
+                    child.refresh_background();
                 }
             }
             MENU_ID_SETTINGS => {

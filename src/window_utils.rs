@@ -33,18 +33,10 @@ pub fn create_main_window(event_loop: &winit::event_loop::EventLoop<UserEvent>) 
 
 /// 新しい子ウィンドウを作成します。
 /// 設定に基づいて初期位置とサイズを設定できます。
-///
-/// # 引数
-/// * `event_loop_target` - ウィンドウを作成するためのイベントループターゲットだよ！
-///                         `main.rs` の `event_loop.run` クロージャの中で `target` として渡されるやつだね。
-/// * `settings` - この子ウィンドウの初期設定 (`ChildSettings`) をオプションで渡せるよ。
-///                `Some` だったらその設定値を、`None` だったらデフォルト値を使ってウィンドウを作るんだ。
-///
-/// # 戻り値
-/// 作成された `winit::window::Window` インスタンス。
 pub fn create_child_window(
     event_loop_target: &EventLoopWindowTarget<UserEvent>,
     settings: Option<&ChildSettings>,
+    bg_color_str: &str,
 ) -> Window {
     let mut builder = WindowBuilder::new()
         .with_title("Desktop Grouping")
@@ -52,8 +44,8 @@ pub fn create_child_window(
         .with_active(false)
         .with_skip_taskbar(true)
         .with_resizable(true)
-        .with_transparent(true)
-        .with_decorations(false);
+        .with_transparent(false)
+        .with_decorations(true);
 
     if let Some(s) = settings {
         builder = builder
@@ -75,6 +67,22 @@ pub fn create_child_window(
     let window = builder
         .build(event_loop_target)
         .expect("子ウィンドウの作成に失敗しました");
+
+    // --- ウィンドウが表示される前の初期化処理だよ！ ---
+
+    // 1. DWM コンポジションを有効にする
+    desktop_grouping::win32::ui_wam::enable_dwm_composition(&window);
+
+    // 2. ウィンドウから余計な装飾を剥ぎ取り、サブクラス化する
+    desktop_grouping::win32::ui_wam::remove_window_decoration_styles(&window);
+
+    // 3. 背景透過設定を適用する (AccentPolicy)
+    if let Some(bg_color) = desktop_grouping::graphics::colors::parse_color(bg_color_str) {
+        desktop_grouping::win32::ui_wam::set_window_composition(&window, bg_color);
+    }
+
+    // 4. 強制的に更新をかけて状態を確定させる
+    desktop_grouping::win32::ui_wam::force_update_window(&window);
 
     return window;
 }
