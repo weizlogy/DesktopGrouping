@@ -10,7 +10,7 @@ description = "DesktopGrouping is a utility for Windows that helps to organize i
 authors = ["weizlogy"]
 
 [dependencies]
-# ロギング
+# 繧ｭ繝｣繝ｭ繧ｰ
 log = "0.4"
 env_logger = "0.10"
 
@@ -21,25 +21,14 @@ toml = "0.8"
 # ユーティリティ
 scopeguard = "1.2"
 chrono = "0.4"
+arboard = "3"
+rand = "0.8"
+colorsys = "0.6"
 
-# ウィンドウ作成とイベント処理
-winit = { version = "0.29", features = ["default", "rwh_05"] }
-open = "5"
-
-# 描画
-softbuffer = "0.4"
-tiny-skia = "0.11"
-ab_glyph = "0.2"
-
-# システムトレイアイコン
+# システムトレイアイコン (Win32 ネイティブで自前実装するか検討中だが一旦維持)
 tray-icon = "0.20"
 
-# 作戦名・色彩世界の創造（オペレーション・カラーワールドクリエイション）で追加
-arboard = "3" # クリップボードアクセス用 (バージョンは適宜確認)
-rand = "0.8" # ハッシュや乱数生成用 (枠線色計算)
-colorsys = "0.6" # 色空間変換用 (枠線色計算、任意だが推奨)
-
-# Windows API を Rust から呼び出すためのクレート
+# Windows API (DirectX / Win32 Native)
 windows = { version = "0.52", features = [
   "Win32_Foundation",
   "Win32_UI_WindowsAndMessaging",
@@ -49,18 +38,22 @@ windows = { version = "0.52", features = [
   "Win32_Storage_FileSystem",
   "Win32_UI_Controls",
   "Win32_Graphics_Dwm",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct2D",
+  "Win32_Graphics_Direct2D_Common",
+  "Win32_Graphics_DirectWrite",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_DirectComposition",
+  "Win32_Graphics_Imaging",
+  "Win32_System_Com",
+  "Foundation",
+  "Foundation_Numerics",
 ] }
-
-# 必要な機能のみを有効にしている (features の指定)
-#   - Win32_Foundation: Windows の基本的なデータ型と構造体
-#   - Win32_UI_WindowsAndMessaging: ウィンドウ作成、メッセージ処理
-#   - Win32_Graphics_Gdi: グラフィックスデバイスインターフェイス（描画関連）
-#   - Win32_System_LibraryLoader: 動的ライブラリの読み込みに関する機能
-#   - SHGetImageList, ImageList_GetIcon に必要 (IImageList インターフェース)
 
 [build-dependencies]
 embed-resource = "2.3"
-# embed-resource は Windows のリソースを埋め込むためのクレート
 
 [dev-dependencies]
-tempfile = "3" # バージョンは最新のものに合わせてね！
+tempfile = "3"

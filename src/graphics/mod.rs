@@ -1,10 +1,8 @@
-// src/graphics/mod.rs
-
-// サブモジュールを宣言
-pub mod colors;
+pub mod api;
+pub mod canvas;
 pub mod drawing;
-pub mod graphics;
-pub mod layout;
+pub mod engine;
 
-// MyGraphics 構造体と、外部から使う必要のある関数や型を公開
-pub use colors::parse_color;
+pub use canvas::Canvas;
+pub use engine::GraphicsEngine;
+pub use drawing::DrawingResources;
