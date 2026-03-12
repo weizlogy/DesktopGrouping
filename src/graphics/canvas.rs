@@ -64,7 +64,7 @@ impl Canvas {
     }
 
     /// スワップチェーンのバックバッファを描画ターゲットとして設定するよ。
-    fn setup_render_target(&mut self) -> Result<(), windows::core::Error> {
+    pub fn setup_render_target(&mut self) -> Result<(), windows::core::Error> {
         unsafe {
             // スワップチェーンからバックバッファ (DXGI Surface) を取得
             let back_buffer = self.swap_chain.GetBuffer::<windows::Win32::Graphics::Dxgi::IDXGISurface>(0)?;
@@ -74,25 +74,33 @@ impl Canvas {
             
             // コンテキストの描画先として設定
             self.d2d_context.SetTarget(&d2d_bitmap);
+
+            // DPI を標準値に固定して, 座標計算のズレを防ぐよ！
+            self.d2d_context.SetDpi(96.0, 96.0);
         }
         Ok(())
     }
 
     /// ウィンドウサイズが変わったときに呼び出してね。
     pub fn resize(&mut self, width: u32, height: u32) -> Result<(), windows::core::Error> {
+        if width == 0 || height == 0 {
+            return Ok(());
+        }
+
         unsafe {
-            // ターゲットを解除してからリサイズ
+            // 1. ターゲットを解除 (リサイズ前に必須)
             self.d2d_context.SetTarget(None);
             
+            // 2. スワップチェーンのバッファをリサイズ
             self.swap_chain.ResizeBuffers(
-                0, // バッファ数 (0 は現状維持)
+                0, // 現状維持
                 width,
                 height,
-                DXGI_FORMAT_UNKNOWN,
-                0, // フラグ
+                windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_UNKNOWN,
+                0,
             )?;
 
-            // ターゲットを再設定
+            // 3. レンダリングターゲットを再構築
             self.setup_render_target()?;
         }
         Ok(())
