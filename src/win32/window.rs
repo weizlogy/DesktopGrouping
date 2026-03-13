@@ -1,14 +1,10 @@
-use std::rc::Rc;
-use crate::graphics::{Canvas, GraphicsEngine};
+use crate::graphics::{Canvas};
 use crate::win32::api;
 use windows::{
     core::PCWSTR,
     Win32::{
         Foundation::HWND,
         System::LibraryLoader::GetModuleHandleW,
-        UI::WindowsAndMessaging::{
-            WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WS_VISIBLE,
-        },
     },
 };
 

@@ -3,16 +3,16 @@ use crate::ui::group::interaction::{InteractionAction, InteractionHandler};
 use crate::ui::group::model::GroupModel;
 use crate::ui::group::renderer::GroupRenderer;
 use crate::win32::api;
+use crate::settings::{manager};
 use std::rc::Rc;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWLP_USERDATA, HWND_BOTTOM, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    SWP_NOMOVE, SWP_NOSIZE, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     WS_POPUP, WS_VISIBLE,
 };
-use crate::win32::vproc::window_proc;
 
 /// グループウィンドウを統括するコンポーネントだよ！
 /// 状態 (Model) と描画 (Renderer) を橋渡しする役割を担うよ。
@@ -28,8 +28,10 @@ impl GroupWindow {
     /// アドレスを固定するために Box<Self> を返すようにするよ。
     pub fn create(
         engine: Rc<GraphicsEngine>,
+        id: String,
         title: String,
         bg_color_hex: String,
+        opacity: f32,
         width: u32,
         height: u32,
     ) -> Result<Box<Self>, windows::core::Error> {
@@ -39,13 +41,6 @@ impl GroupWindow {
         let window_name = api::utils::to_wide(&title);
         let class_pcwstr = PCWSTR::from_raw(class_name.as_ptr());
         let window_pcwstr = PCWSTR::from_raw(window_name.as_ptr());
-
-        // クラス登録
-        api::register_class::register_window_class(
-            instance.into(),
-            class_pcwstr,
-            Some(window_proc),
-        )?;
 
         // スタイル設定とサイズ指定
         const WS_EX_NOREDIRECTIONBITMAP: windows::Win32::UI::WindowsAndMessaging::WINDOW_EX_STYLE =
@@ -84,7 +79,7 @@ impl GroupWindow {
         // 最背面に移動
         api::show_window::move_to_bottom(hwnd);
 
-        let model = GroupModel::new(title, bg_color_hex);
+        let model = GroupModel::new(id, title, bg_color_hex, opacity);
         let renderer = GroupRenderer::new(engine, hwnd, width, height)?;
         let interaction = InteractionHandler::new();
 
@@ -134,32 +129,56 @@ impl GroupWindow {
     /// マウスが動いたときの処理だよ。
     pub fn handle_mouse_move(&mut self) -> Result<(), windows::core::Error> {
         let action = self.interaction.handle_mouse_move();
+        self.perform_action(action)
+    }
 
+    /// マウスホイールが回されたときの処理だよ。
+    pub fn handle_mouse_wheel(&mut self, delta: i16) -> Result<(), windows::core::Error> {
+        let action = self.interaction.handle_mouse_wheel(delta);
+        self.perform_action(action)
+    }
+
+    /// キーが押されたときの処理だよ。
+    pub fn handle_keydown(&mut self, virtual_key: u16) -> Result<(), windows::core::Error> {
+        let action = self.interaction.handle_keydown(virtual_key);
+        self.perform_action(action)
+    }
+
+    /// 抽象的なアクションを実行するよ！
+    pub fn perform_action(&mut self, action: InteractionAction) -> Result<(), windows::core::Error> {
         match action {
             InteractionAction::Move { dx, dy } => {
                 let mut rect = RECT::default();
                 unsafe {
                     GetWindowRect(self.hwnd, &mut rect)?;
+                    let new_x = rect.left + dx;
+                    let new_y = rect.top + dy;
                     SetWindowPos(
                         self.hwnd,
                         HWND_BOTTOM,
-                        rect.left + dx,
-                        rect.top + dy,
+                        new_x,
+                        new_y,
                         0,
                         0,
                         SWP_NOSIZE | SWP_NOACTIVATE,
                     )?;
+
+                    // 設定を更新して保存
+                    let mut settings = manager::get_settings_writer();
+                    if let Some(child) = settings.children.get_mut(&self.model.id) {
+                        child.x = new_x;
+                        child.y = new_y;
+                        drop(settings); // ロックを解除してから保存
+                        manager::save();
+                    }
                 }
             }
             InteractionAction::Resize { dw, dh } => {
                 let mut rect = RECT::default();
                 unsafe {
                     GetWindowRect(self.hwnd, &mut rect)?;
-                    let new_width = (rect.right - rect.left) + dw;
-                    let new_height = (rect.bottom - rect.top) + dh;
-
-                    let new_width = new_width.max(50);
-                    let new_height = new_height.max(50);
+                    let new_width = ((rect.right - rect.left) + dw).max(50);
+                    let new_height = ((rect.bottom - rect.top) + dh).max(50);
 
                     SetWindowPos(
                         self.hwnd,
@@ -170,15 +189,59 @@ impl GroupWindow {
                         new_height,
                         SWP_NOMOVE | SWP_NOACTIVATE,
                     )?;
+
+                    // 設定を更新して保存
+                    let mut settings = manager::get_settings_writer();
+                    if let Some(child) = settings.children.get_mut(&self.model.id) {
+                        child.width = new_width as u32;
+                        child.height = new_height as u32;
+                        drop(settings);
+                        manager::save();
+                    }
                 }
-                // 即座に描画を更新するよ！
-                if let Err(e) = self.draw() {
-                    log::error!("Draw error during resize: {}", e);
+                // 即座に描画を更新
+                self.draw()?;
+            }
+            InteractionAction::ChangeOpacity { delta } | InteractionAction::ChangeOpacityContinuous { delta } => {
+                self.model.opacity = (self.model.opacity + delta).clamp(0.1, 1.0);
+
+                // 設定を更新して保存
+                let mut settings = manager::get_settings_writer();
+                if let Some(child) = settings.children.get_mut(&self.model.id) {
+                    child.opacity = self.model.opacity;
+                    drop(settings);
+                    manager::save();
+                }
+                self.draw()?;
+            }
+            InteractionAction::PasteColor => {
+                if let Some(hex_raw) = api::utils::get_clipboard_text() {
+                    let mut hex = hex_raw.trim().to_string();
+
+                    // #random だったらランダムな色を生成するよ！
+                    if hex.to_lowercase() == "#random" {
+                        use rand::Rng;
+                        let mut rng = rand::thread_rng();
+                        hex = format!("#{:02X}{:02X}{:02X}", rng.r#gen::<u8>(), rng.r#gen::<u8>(), rng.r#gen::<u8>());
+                    }
+
+                    // バリデーション (簡易的に 7文字か9文字の # 始まり)
+                    if (hex.len() == 7 || hex.len() == 9) && hex.starts_with('#') {
+                        self.model.bg_color_hex = hex.clone();
+
+                        // 設定を更新して保存
+                        let mut settings = manager::get_settings_writer();
+                        if let Some(child) = settings.children.get_mut(&self.model.id) {
+                            child.bg_color = hex;
+                            drop(settings);
+                            manager::save();
+                        }
+                        self.draw()?;
+                    }
                 }
             }
             InteractionAction::None => {}
         }
-
         Ok(())
     }
 

@@ -38,7 +38,7 @@ impl GroupRenderer {
             &self.canvas.d2d_context,
             width,
             height,
-            &model.bg_color_hex,
+            model,
             &mut self.resources,
         )?;
 

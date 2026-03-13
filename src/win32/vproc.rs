@@ -3,6 +3,7 @@ use windows::Win32::{
     UI::WindowsAndMessaging::{
         DefWindowProcW, PostQuitMessage, WM_DESTROY, WM_PAINT, WM_SIZE, WM_ERASEBKGND,
         WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_LBUTTONUP, WM_NCHITTEST, HTCLIENT,
+        WM_KEYDOWN,
         GetWindowLongPtrW, GWLP_USERDATA,
     },
     Graphics::Gdi::{BeginPaint, EndPaint, PAINTSTRUCT},
@@ -63,6 +64,13 @@ pub unsafe extern "system" fn window_proc(
             }
             WM_LBUTTONUP => {
                 window.handle_lbutton_up();
+                return LRESULT(0);
+            }
+            WM_KEYDOWN => {
+                let vk = wparam.0 as u16;
+                if let Err(e) = window.handle_keydown(vk) {
+                    log::error!("Keydown error: {}", e);
+                }
                 return LRESULT(0);
             }
             WM_ERASEBKGND => {

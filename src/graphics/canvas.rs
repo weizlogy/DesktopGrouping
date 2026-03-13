@@ -5,7 +5,7 @@ use windows::Win32::{
         Direct2D::{ID2D1DeviceContext, ID2D1Bitmap1},
         DirectComposition::{IDCompositionTarget, IDCompositionVisual},
         Dxgi::IDXGISwapChain1,
-        Dxgi::Common::DXGI_FORMAT_UNKNOWN,
+        // Dxgi::Common::DXGI_FORMAT_UNKNOWN,
     },
 };
 use crate::graphics::{api, GraphicsEngine};
@@ -68,10 +68,10 @@ impl Canvas {
         unsafe {
             // スワップチェーンからバックバッファ (DXGI Surface) を取得
             let back_buffer = self.swap_chain.GetBuffer::<windows::Win32::Graphics::Dxgi::IDXGISurface>(0)?;
-            
+
             // DXGI Surface から Direct2D ビットマップを作成
             let d2d_bitmap: ID2D1Bitmap1 = api::d2d1::create_bitmap_from_dxgi_surface(&self.d2d_context, &back_buffer)?;
-            
+
             // コンテキストの描画先として設定
             self.d2d_context.SetTarget(&d2d_bitmap);
 
@@ -90,7 +90,7 @@ impl Canvas {
         unsafe {
             // 1. ターゲットを解除 (リサイズ前に必須)
             self.d2d_context.SetTarget(None);
-            
+
             // 2. スワップチェーンのバッファをリサイズ
             self.swap_chain.ResizeBuffers(
                 0, // 現状維持
