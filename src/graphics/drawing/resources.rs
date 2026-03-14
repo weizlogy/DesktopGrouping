@@ -57,8 +57,8 @@ impl DrawingResources {
             return Ok(format.clone());
         }
 
-        let format = unsafe {
-            self.dwrite_factory.CreateTextFormat(
+        let format: IDWriteTextFormat = unsafe {
+            let f = self.dwrite_factory.CreateTextFormat(
                 windows::core::w!("Segoe UI"),
                 None,
                 DWRITE_FONT_WEIGHT_NORMAL,
@@ -66,7 +66,10 @@ impl DrawingResources {
                 DWRITE_FONT_STRETCH_NORMAL,
                 12.0,
                 windows::core::w!("ja-jp"),
-            )?
+            )?;
+            f.SetTextAlignment(windows::Win32::Graphics::DirectWrite::DWRITE_TEXT_ALIGNMENT_CENTER)?;
+            f.SetParagraphAlignment(windows::Win32::Graphics::DirectWrite::DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+            f
         };
 
         self.text_format = Some(format.clone());

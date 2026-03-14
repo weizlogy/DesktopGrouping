@@ -1,6 +1,7 @@
-use windows::Win32::Foundation::POINT;
+use windows::Win32::Foundation::{POINT, RECT, HWND};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_SHIFT, VK_MENU};
-use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect};
+use crate::graphics::layout;
 
 /// ユーザーの操作によって発生した抽象的なアクションだよ！
 pub enum InteractionAction {
@@ -10,6 +11,10 @@ pub enum InteractionAction {
     ChangeOpacity { delta: f32 }, // 透明度の変化量 (不連続)
     ChangeOpacityContinuous { delta: f32 }, // 透明度の変化量 (連続)
     PasteColor,                  // クリップボードからの色貼り付け要求
+    ExecuteIcon { index: usize }, // アイコンの実行
+    DeleteIcon { index: usize },  // アイコンの削除
+    OpenLocation { index: usize }, // ファイルの場所を開く
+    DeleteGroup,                 // グループ自体の削除
 }
 
 /// ウィンドウとのインタラクション（ドラッグ、リサイズ等）を管理するよ。
@@ -30,8 +35,35 @@ impl InteractionHandler {
         }
     }
 
+    /// マウス座標からアイコンのインデックスを特定するよ！
+    /// 見つからなければ None を返すよ。
+    fn hit_test(hwnd: HWND, icon_count: usize) -> Option<usize> {
+        let mut pt = POINT::default();
+        let mut rect = RECT::default();
+        unsafe {
+            if GetCursorPos(&mut pt).is_err() || GetWindowRect(hwnd, &mut rect).is_err() {
+                return None;
+            }
+        }
+
+        // ウィンドウ内相対座標に変換
+        let rel_x = (pt.x - rect.left) as f32;
+        let rel_y = (pt.y - rect.top) as f32;
+        let width = (rect.right - rect.left) as f32;
+
+        // レイアウトを計算して、どの矩形に入っているかチェックするよ
+        let layouts = layout::calculate_grid_layout(width, icon_count, 1.0);
+        for (i, layout) in layouts.iter().enumerate() {
+            if rel_x >= layout.hit_rect.left && rel_x <= layout.hit_rect.right &&
+               rel_y >= layout.hit_rect.top && rel_y <= layout.hit_rect.bottom {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+
     /// マウスボタンが押されたときの処理だよ。
-    /// スクリーン座標を取得して、操作モードを確定させるよ。
     pub fn handle_lbutton_down(&mut self) {
         let mut pt = POINT::default();
         unsafe {
@@ -53,8 +85,38 @@ impl InteractionHandler {
         self.last_screen_pos = Some(pt);
     }
 
+    /// ダブルクリックされたときの処理だよ。
+    pub fn handle_lbutton_dblclk(&self, hwnd: HWND, icon_count: usize) -> InteractionAction {
+        if let Some(index) = Self::hit_test(hwnd, icon_count) {
+            return InteractionAction::ExecuteIcon { index };
+        }
+        InteractionAction::None
+    }
+
+    /// 右クリックされたときの処理だよ。
+    pub fn handle_rbutton_down(&self, hwnd: HWND, icon_count: usize) -> InteractionAction {
+        use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+        
+        // Ctrlキーの状態を確実に取得するよ
+        let is_ctrl = unsafe { (GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
+        
+        // どのアイコンの上か判定
+        let hit_index = Self::hit_test(hwnd, icon_count);
+
+        match (hit_index, is_ctrl) {
+            // 1. Ctrl + 右クリック (削除系)
+            (Some(index), true) => InteractionAction::DeleteIcon { index },
+            (None, true) => InteractionAction::DeleteGroup,
+            
+            // 2. 右クリック単体 (表示系)
+            (Some(index), false) => InteractionAction::OpenLocation { index },
+            
+            // 3. その他
+            _ => InteractionAction::None,
+        }
+    }
+
     /// マウスが動いたときの処理だよ。
-    /// 前回のスクリーン座標との差分を計算し、アクションを返すよ。
     pub fn handle_mouse_move(&mut self) -> InteractionAction {
         let mut pt = POINT::default();
         unsafe {
@@ -71,7 +133,6 @@ impl InteractionHandler {
                 return InteractionAction::None;
             }
 
-            // 毎フレーム更新することで「差分」を正しく計算できるようにするよ！
             self.last_screen_pos = Some(pt);
 
             if self.is_dragging {
@@ -79,7 +140,6 @@ impl InteractionHandler {
             } else if self.is_resizing {
                 return InteractionAction::Resize { dw: dx, dh: dy };
             } else if self.is_adjusting_opacity {
-                // 左右の移動量を透過度に変換 (1px = 0.005)
                 return InteractionAction::ChangeOpacityContinuous { delta: dx as f32 * 0.005 };
             }
         }
@@ -91,7 +151,6 @@ impl InteractionHandler {
         let is_ctrl = unsafe { (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
         
         if is_ctrl {
-            // ホイールの回転量に応じて透明度を 0.05 刻みで変えるよ
             let step = 0.05;
             let delta_f = if delta > 0 { step } else { -step };
             return InteractionAction::ChangeOpacity { delta: delta_f };
@@ -111,7 +170,7 @@ impl InteractionHandler {
         InteractionAction::None
     }
 
-    /// マウスボタンが離されたら、すべての状態をリセットするよ。
+    /// マウスボタンが離されたときの処理だよ。
     pub fn handle_lbutton_up(&mut self) {
         self.is_dragging = false;
         self.is_resizing = false;

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 /// グループウィンドウのデータを管理するよ！
 /// DirectX などの描画詳細には一切依存しないピュアなデータ層。
 pub struct GroupModel {
@@ -8,19 +10,38 @@ pub struct GroupModel {
     pub icons: Vec<IconState>,
 }
 
+#[derive(Clone)]
 pub struct IconState {
     pub name: String,
-    // TODO: ここに HICON などの情報を追加する予定
+    pub path: PathBuf,
 }
 
 impl GroupModel {
-    pub fn new(id: String, title: String, bg_color_hex: String, opacity: f32) -> Self {
+    pub fn new(
+        id: String,
+        title: String,
+        bg_color_hex: String,
+        opacity: f32,
+        initial_icons: Vec<PathBuf>,
+    ) -> Self {
+        let icons = initial_icons
+            .into_iter()
+            .map(|path| {
+                let name = path
+                    .file_stem() // 拡張子を除いた名前を取得！
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
+                IconState { name, path }
+            })
+            .collect();
+
         Self {
             id,
             title,
             bg_color_hex,
             opacity,
-            icons: Vec::new(),
+            icons,
         }
     }
 }

@@ -3,7 +3,7 @@ use windows::{
     Win32::{
         Foundation::{HINSTANCE, ERROR_CLASS_ALREADY_EXISTS},
         UI::WindowsAndMessaging::{
-            LoadCursorW, RegisterClassExW, CS_HREDRAW, CS_VREDRAW, HICON, IDC_ARROW, WNDCLASSEXW,
+            LoadCursorW, RegisterClassExW, CS_HREDRAW, CS_VREDRAW, CS_DBLCLKS, HICON, IDC_ARROW, WNDCLASSEXW,
             WNDPROC,
         },
     },
@@ -18,7 +18,7 @@ pub fn register_window_class(
     unsafe {
         let wc = WNDCLASSEXW {
             cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-            style: CS_HREDRAW | CS_VREDRAW,
+            style: CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS, // CS_DBLCLKS を追加！
             lpfnWndProc: wnd_proc,
             hInstance: instance,
             hCursor: LoadCursorW(None, IDC_ARROW)?,

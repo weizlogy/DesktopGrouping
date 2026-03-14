@@ -3,12 +3,15 @@ use windows::Win32::{
     UI::WindowsAndMessaging::{
         DefWindowProcW, PostQuitMessage, WM_DESTROY, WM_PAINT, WM_SIZE, WM_ERASEBKGND,
         WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_LBUTTONUP, WM_NCHITTEST, HTCLIENT,
-        WM_KEYDOWN,
+        WM_KEYDOWN, WM_DROPFILES, WM_LBUTTONDBLCLK, WM_RBUTTONDOWN,
+        WM_WINDOWPOSCHANGING, WM_MOUSEACTIVATE, MA_NOACTIVATE, WINDOWPOS, HWND_BOTTOM,
         GetWindowLongPtrW, GWLP_USERDATA,
     },
     Graphics::Gdi::{BeginPaint, EndPaint, PAINTSTRUCT},
 };
+use windows::Win32::UI::Shell::{HDROP, DragFinish};
 use crate::ui::group::window::GroupWindow;
+use crate::win32::api;
 
 /// ウィンドウに対するメッセージを裁くプロシージャだよ！
 pub unsafe extern "system" fn window_proc(
@@ -18,7 +21,6 @@ pub unsafe extern "system" fn window_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     unsafe {
-        // GWLP_USERDATA から GroupWindow のポインタを取得するよ
         let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
 
         if ptr == 0 {
@@ -28,25 +30,33 @@ pub unsafe extern "system" fn window_proc(
 
         match msg {
             WM_NCHITTEST => {
-                // ウィンドウのどこを触っても「中身」だと OS に伝えるよ。
-                // これでリサイズ後の領域でも正しくメッセージが届くようになるはず！
                 return LRESULT(HTCLIENT as isize);
+            }
+            WM_WINDOWPOSCHANGING => {
+                // Zオーダーが変更されようとしているときに介入するよ！
+                // 強制的に最背面 (HWND_BOTTOM) に挿入されるように設定を書き換えるんだ。
+                let window_pos = &mut *(lparam.0 as *mut WINDOWPOS);
+                window_pos.hwndInsertAfter = HWND_BOTTOM;
+                // ここでは DefWindowProcW を呼ばずに 0 を返してもいいし, 
+                // 書き換えた状態でそのまま流してもいいよ。
+                return LRESULT(0);
+            }
+            WM_MOUSEACTIVATE => {
+                // クリックしてもアクティブ化（最前面化）させないようにするよ。
+                return LRESULT(MA_NOACTIVATE as isize);
             }
             WM_PAINT => {
                 let mut ps = PAINTSTRUCT::default();
                 BeginPaint(hwnd, &mut ps);
-
                 if let Err(e) = window.draw() {
                     log::error!("Draw error: {}", e);
                 }
-
                 EndPaint(hwnd, &ps);
                 return LRESULT(0);
             }
             WM_SIZE => {
                 let width = (lparam.0 & 0xFFFF) as u32;
                 let height = ((lparam.0 >> 16) & 0xFFFF) as u32;
-                log::info!("Window resized: {}x{}", width, height);
                 if let Err(e) = window.handle_resize(width, height) {
                     log::error!("Resize error: {}", e);
                 }
@@ -54,6 +64,18 @@ pub unsafe extern "system" fn window_proc(
             }
             WM_LBUTTONDOWN => {
                 window.handle_lbutton_down();
+                return LRESULT(0);
+            }
+            WM_LBUTTONDBLCLK => {
+                if let Err(e) = window.handle_lbutton_dblclk() {
+                    log::error!("Double click error: {}", e);
+                }
+                return LRESULT(0);
+            }
+            WM_RBUTTONDOWN => {
+                if let Err(e) = window.handle_rbutton_down() {
+                    log::error!("Right button down error: {}", e);
+                }
                 return LRESULT(0);
             }
             WM_MOUSEMOVE => {
@@ -73,12 +95,19 @@ pub unsafe extern "system" fn window_proc(
                 }
                 return LRESULT(0);
             }
+            WM_DROPFILES => {
+                let hdrop = HDROP(wparam.0 as isize);
+                let files = api::utils::get_dropped_files(hdrop);
+                if let Err(e) = window.handle_drop_files(files) {
+                    log::error!("Drop files error: {}", e);
+                }
+                DragFinish(hdrop);
+                return LRESULT(0);
+            }
             WM_ERASEBKGND => {
-                // 背景消去を OS にさせないことでチラツキを抑えるよ (DirectX で描くから不要)
                 return LRESULT(1);
             }
             WM_DESTROY => {
-                PostQuitMessage(0);
                 return LRESULT(0);
             }
             _ => {}
