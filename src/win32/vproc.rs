@@ -5,6 +5,7 @@ use windows::Win32::{
         WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_LBUTTONUP, WM_NCHITTEST, HTCLIENT,
         WM_KEYDOWN, WM_DROPFILES, WM_LBUTTONDBLCLK, WM_RBUTTONDOWN,
         WM_WINDOWPOSCHANGING, WM_MOUSEACTIVATE, MA_NOACTIVATE, WINDOWPOS, HWND_BOTTOM,
+        WM_TIMER,
         GetWindowLongPtrW, GWLP_USERDATA,
     },
     Graphics::Gdi::{BeginPaint, EndPaint, PAINTSTRUCT},
@@ -33,17 +34,18 @@ pub unsafe extern "system" fn window_proc(
                 return LRESULT(HTCLIENT as isize);
             }
             WM_WINDOWPOSCHANGING => {
-                // Zオーダーが変更されようとしているときに介入するよ！
-                // 強制的に最背面 (HWND_BOTTOM) に挿入されるように設定を書き換えるんだ。
                 let window_pos = &mut *(lparam.0 as *mut WINDOWPOS);
                 window_pos.hwndInsertAfter = HWND_BOTTOM;
-                // ここでは DefWindowProcW を呼ばずに 0 を返してもいいし, 
-                // 書き換えた状態でそのまま流してもいいよ。
                 return LRESULT(0);
             }
             WM_MOUSEACTIVATE => {
-                // クリックしてもアクティブ化（最前面化）させないようにするよ。
                 return LRESULT(MA_NOACTIVATE as isize);
+            }
+            WM_TIMER => {
+                if let Err(e) = window.handle_timer(wparam.0) {
+                    log::error!("Timer error: {}", e);
+                }
+                return LRESULT(0);
             }
             WM_PAINT => {
                 let mut ps = PAINTSTRUCT::default();

@@ -10,9 +10,9 @@ pub struct ItemLayout {
 /// レイアウト定数 (スケーリングを考慮する前のベース値)
 pub const ICON_SIZE: f32 = 48.0;
 pub const CELL_WIDTH: f32 = 90.0;
-pub const CELL_HEIGHT: f32 = 100.0;
+pub const CELL_HEIGHT: f32 = 84.0; // 100.0 から縮小
 pub const PADDING: f32 = 4.0;
-pub const TEXT_HEIGHT: f32 = 28.0;
+pub const TEXT_HEIGHT: f32 = 20.0; // 28.0 から縮小
 
 /// グリッド配置（リフロー対応）を計算するよ！
 /// window_width に合わせて列数を自動調整するんだ。

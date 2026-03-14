@@ -8,6 +8,8 @@ pub struct GroupModel {
     pub bg_color_hex: String,
     pub opacity: f32, // 0.0 ~ 1.0
     pub icons: Vec<IconState>,
+    pub hovered_index: Option<usize>,
+    pub executing_index: Option<usize>, // 一瞬だけ光らせるための状態
 }
 
 #[derive(Clone)]
@@ -28,7 +30,7 @@ impl GroupModel {
             .into_iter()
             .map(|path| {
                 let name = path
-                    .file_stem() // 拡張子を除いた名前を取得！
+                    .file_stem()
                     .and_then(|n| n.to_str())
                     .unwrap_or("Unknown")
                     .to_string();
@@ -42,6 +44,8 @@ impl GroupModel {
             bg_color_hex,
             opacity,
             icons,
+            hovered_index: None,
+            executing_index: None,
         }
     }
 }

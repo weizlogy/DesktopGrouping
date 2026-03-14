@@ -11,11 +11,13 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWLP_USERDATA, HWND_BOTTOM, SWP_NOACTIVATE,
     SWP_NOMOVE, SWP_NOSIZE, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_POPUP, WS_VISIBLE, WS_EX_ACCEPTFILES,
+    WS_POPUP, WS_VISIBLE, WS_EX_ACCEPTFILES, SetTimer, KillTimer,
 };
 
+// タイマー ID の定義
+const IDT_EXECUTE_FLASH: usize = 1;
+
 /// グループウィンドウを統括するコンポーネントだよ！
-/// 状態 (Model) と描画 (Renderer) を橋渡しする役割を担うよ。
 pub struct GroupWindow {
     pub hwnd: HWND,
     pub model: GroupModel,
@@ -25,7 +27,6 @@ pub struct GroupWindow {
 
 impl GroupWindow {
     /// 新しいグループウィンドウを作成して, 初期化するよ！
-    /// アドレスを固定するために Box<Self> を返すようにするよ。
     pub fn create(
         engine: Rc<GraphicsEngine>,
         id: String,
@@ -43,7 +44,6 @@ impl GroupWindow {
         let class_pcwstr = PCWSTR::from_raw(class_name.as_ptr());
         let window_pcwstr = PCWSTR::from_raw(window_name.as_ptr());
 
-        // スタイル設定とサイズ指定
         const WS_EX_NOREDIRECTIONBITMAP: windows::Win32::UI::WindowsAndMessaging::WINDOW_EX_STYLE =
             windows::Win32::UI::WindowsAndMessaging::WINDOW_EX_STYLE(0x00200000);
 
@@ -68,7 +68,6 @@ impl GroupWindow {
             options,
         )?;
 
-        // クリック判定領域をウィンドウ全体に広げるよ（これがないとリサイズ時に判定が追従しない！）
         unsafe {
             windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes(
                 hwnd,
@@ -78,21 +77,14 @@ impl GroupWindow {
             )?;
         }
 
-        // 最背面に移動
         api::show_window::move_to_bottom(hwnd);
 
         let model = GroupModel::new(id, title, bg_color_hex, opacity, icons);
         let renderer = GroupRenderer::new(engine, hwnd, width, height)?;
         let interaction = InteractionHandler::new();
 
-        let window = Box::new(Self {
-            hwnd,
-            model,
-            renderer,
-            interaction,
-        });
+        let window = Box::new(Self { hwnd, model, renderer, interaction });
 
-        // 自身のポインタを HWND に紐付ける (重要！)
         unsafe {
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, &*window as *const Self as isize);
         }
@@ -100,62 +92,58 @@ impl GroupWindow {
         Ok(window)
     }
 
-    /// 描画を実行するよ。
     pub fn draw(&mut self) -> Result<(), windows::core::Error> {
         let mut rect = RECT::default();
-        unsafe {
-            windows::Win32::UI::WindowsAndMessaging::GetClientRect(self.hwnd, &mut rect)?;
-        }
+        unsafe { windows::Win32::UI::WindowsAndMessaging::GetClientRect(self.hwnd, &mut rect)?; }
         let width = (rect.right - rect.left) as f32;
         let height = (rect.bottom - rect.top) as f32;
-
         self.renderer.render(&self.model, width, height)
     }
 
-    /// ウィンドウサイズが変更されたときの処理だよ。
     pub fn handle_resize(&mut self, width: u32, height: u32) -> Result<(), windows::core::Error> {
         self.renderer.resize(width, height)
     }
 
-    /// マウスの左ボタンが押されたときの処理だよ。
     pub fn handle_lbutton_down(&mut self) {
         self.interaction.handle_lbutton_down();
-        unsafe {
-            windows::Win32::UI::Input::KeyboardAndMouse::SetCapture(self.hwnd);
-        }
+        unsafe { windows::Win32::UI::Input::KeyboardAndMouse::SetCapture(self.hwnd); }
     }
 
-    /// ダブルクリックされたときの処理だよ。
     pub fn handle_lbutton_dblclk(&mut self) -> Result<(), windows::core::Error> {
         let action = self.interaction.handle_lbutton_dblclk(self.hwnd, self.model.icons.len());
         self.perform_action(action)
     }
 
-    /// 右クリックされたときの処理だよ。
     pub fn handle_rbutton_down(&mut self) -> Result<(), windows::core::Error> {
         let action = self.interaction.handle_rbutton_down(self.hwnd, self.model.icons.len());
         self.perform_action(action)
     }
 
-    /// マウスが動いたときの処理だよ。
     pub fn handle_mouse_move(&mut self) -> Result<(), windows::core::Error> {
-        let action = self.interaction.handle_mouse_move();
+        let action = self.interaction.handle_mouse_move(self.hwnd, self.model.icons.len());
         self.perform_action(action)
     }
 
-    /// マウスホイールが回されたときの処理だよ。
     pub fn handle_mouse_wheel(&mut self, delta: i16) -> Result<(), windows::core::Error> {
         let action = self.interaction.handle_mouse_wheel(delta);
         self.perform_action(action)
     }
 
-    /// キーが押されたときの処理だよ。
     pub fn handle_keydown(&mut self, virtual_key: u16) -> Result<(), windows::core::Error> {
         let action = self.interaction.handle_keydown(virtual_key);
         self.perform_action(action)
     }
 
-    /// 抽象的なアクションを実行するよ！
+    /// タイマーが発火したときの処理だよ。
+    pub fn handle_timer(&mut self, timer_id: usize) -> Result<(), windows::core::Error> {
+        if timer_id == IDT_EXECUTE_FLASH {
+            self.model.executing_index = None;
+            unsafe { KillTimer(self.hwnd, IDT_EXECUTE_FLASH).ok(); }
+            self.draw()?;
+        }
+        Ok(())
+    }
+
     pub fn perform_action(&mut self, action: InteractionAction) -> Result<(), windows::core::Error> {
         match action {
             InteractionAction::Move { dx, dy } => {
@@ -168,8 +156,7 @@ impl GroupWindow {
 
                     let mut settings = manager::get_settings_writer();
                     if let Some(child) = settings.children.get_mut(&self.model.id) {
-                        child.x = new_x;
-                        child.y = new_y;
+                        child.x = new_x; child.y = new_y;
                         drop(settings);
                         manager::save();
                     }
@@ -185,8 +172,7 @@ impl GroupWindow {
 
                     let mut settings = manager::get_settings_writer();
                     if let Some(child) = settings.children.get_mut(&self.model.id) {
-                        child.width = new_width as u32;
-                        child.height = new_height as u32;
+                        child.width = new_width as u32; child.height = new_height as u32;
                         drop(settings);
                         manager::save();
                     }
@@ -224,22 +210,30 @@ impl GroupWindow {
                 }
             }
             InteractionAction::ExecuteIcon { index } => {
-                if let Some(icon) = self.model.icons.get(index) {
-                    log::info!("Executing: {:?}", icon.path);
-                    api::shell::execute_path(&icon.path)?;
+                // 先にパスだけを取得して, self への借用を終わらせるよ
+                let maybe_path = self.model.icons.get(index).map(|i| i.path.clone());
+                
+                if let Some(path) = maybe_path {
+                    // ここからは &mut self を自由に使えるよ
+                    self.model.executing_index = Some(index);
+                    self.draw()?;
+                    
+                    unsafe { SetTimer(self.hwnd, IDT_EXECUTE_FLASH, 150, None); }
+                    
+                    log::info!("Executing: {:?}", path);
+                    api::shell::execute_path(&path)?;
                 }
             }
             InteractionAction::OpenLocation { index } => {
-                if let Some(icon) = self.model.icons.get(index) {
-                    log::info!("Opening location: {:?}", icon.path);
-                    api::shell::open_file_location(&icon.path)?;
+                let icon_path = self.model.icons.get(index).map(|i| i.path.clone());
+                if let Some(path) = icon_path {
+                    log::info!("Opening location: {:?}", path);
+                    api::shell::open_file_location(&path)?;
                 }
             }
             InteractionAction::DeleteIcon { index } => {
                 if index < self.model.icons.len() {
-                    let removed = self.model.icons.remove(index);
-                    log::info!("Deleting icon: {:?}", removed.path);
-                    
+                    self.model.icons.remove(index);
                     let mut settings = manager::get_settings_writer();
                     if let Some(child) = settings.children.get_mut(&self.model.id) {
                         child.icons.remove(index);
@@ -250,37 +244,32 @@ impl GroupWindow {
                 }
             }
             InteractionAction::DeleteGroup => {
-                log::info!("Deleting group: {}", self.model.id);
-                // 設定から削除
                 let mut settings = manager::get_settings_writer();
                 settings.children.remove(&self.model.id);
                 drop(settings);
                 manager::save();
-                
-                // メッセージループに対して, このウィンドウを管理リストから外すよう通知する
                 unsafe {
                     windows::Win32::UI::WindowsAndMessaging::PostMessageW(
-                        self.hwnd,
-                        api::WM_REMOVE_WINDOW,
+                        self.hwnd, api::WM_REMOVE_WINDOW,
                         windows::Win32::Foundation::WPARAM(self.hwnd.0 as usize),
                         windows::Win32::Foundation::LPARAM(0),
                     ).ok();
-                    
-                    // ウィンドウを破棄
                     windows::Win32::UI::WindowsAndMessaging::DestroyWindow(self.hwnd).ok();
                 }
+            }
+            InteractionAction::HoverChanged { index } => {
+                self.model.hovered_index = index;
+                self.draw()?;
             }
             InteractionAction::None => {}
         }
         Ok(())
     }
 
-    /// ファイルがドロップされたときの処理だよ。
     pub fn handle_drop_files(&mut self, paths: Vec<std::path::PathBuf>) -> Result<(), windows::core::Error> {
         for path in paths {
             let name = path.file_stem().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
             self.model.icons.push(crate::ui::group::model::IconState { name, path: path.clone() });
-
             let mut settings = manager::get_settings_writer();
             if let Some(child) = settings.children.get_mut(&self.model.id) {
                 child.icons.push(crate::settings::models::PersistentIconInfo { path: path.clone() });
@@ -291,11 +280,8 @@ impl GroupWindow {
         self.draw()
     }
 
-    /// マウスの左ボタンが離されたときの処理だよ。
     pub fn handle_lbutton_up(&mut self) {
         self.interaction.handle_lbutton_up();
-        unsafe {
-            windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture().ok();
-        }
+        unsafe { windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture().ok(); }
     }
 }

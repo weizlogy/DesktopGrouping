@@ -15,6 +15,7 @@ pub enum InteractionAction {
     DeleteIcon { index: usize },  // アイコンの削除
     OpenLocation { index: usize }, // ファイルの場所を開く
     DeleteGroup,                 // グループ自体の削除
+    HoverChanged { index: Option<usize> }, // ホバー対象の変更
 }
 
 /// ウィンドウとのインタラクション（ドラッグ、リサイズ等）を管理するよ。
@@ -23,6 +24,7 @@ pub struct InteractionHandler {
     is_dragging: bool,
     is_resizing: bool,
     is_adjusting_opacity: bool,
+    hovered_index: Option<usize>, // 現在ホバーされているアイコンのインデックス
 }
 
 impl InteractionHandler {
@@ -32,11 +34,11 @@ impl InteractionHandler {
             is_dragging: false,
             is_resizing: false,
             is_adjusting_opacity: false,
+            hovered_index: None,
         }
     }
 
     /// マウス座標からアイコンのインデックスを特定するよ！
-    /// 見つからなければ None を返すよ。
     fn hit_test(hwnd: HWND, icon_count: usize) -> Option<usize> {
         let mut pt = POINT::default();
         let mut rect = RECT::default();
@@ -46,12 +48,10 @@ impl InteractionHandler {
             }
         }
 
-        // ウィンドウ内相対座標に変換
         let rel_x = (pt.x - rect.left) as f32;
         let rel_y = (pt.y - rect.top) as f32;
         let width = (rect.right - rect.left) as f32;
 
-        // レイアウトを計算して、どの矩形に入っているかチェックするよ
         let layouts = layout::calculate_grid_layout(width, icon_count, 1.0);
         for (i, layout) in layouts.iter().enumerate() {
             if rel_x >= layout.hit_rect.left && rel_x <= layout.hit_rect.right &&
@@ -96,28 +96,19 @@ impl InteractionHandler {
     /// 右クリックされたときの処理だよ。
     pub fn handle_rbutton_down(&self, hwnd: HWND, icon_count: usize) -> InteractionAction {
         use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
-        
-        // Ctrlキーの状態を確実に取得するよ
         let is_ctrl = unsafe { (GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
-        
-        // どのアイコンの上か判定
         let hit_index = Self::hit_test(hwnd, icon_count);
 
         match (hit_index, is_ctrl) {
-            // 1. Ctrl + 右クリック (削除系)
             (Some(index), true) => InteractionAction::DeleteIcon { index },
             (None, true) => InteractionAction::DeleteGroup,
-            
-            // 2. 右クリック単体 (表示系)
             (Some(index), false) => InteractionAction::OpenLocation { index },
-            
-            // 3. その他
             _ => InteractionAction::None,
         }
     }
 
     /// マウスが動いたときの処理だよ。
-    pub fn handle_mouse_move(&mut self) -> InteractionAction {
+    pub fn handle_mouse_move(&mut self, hwnd: HWND, icon_count: usize) -> InteractionAction {
         let mut pt = POINT::default();
         unsafe {
             if GetCursorPos(&mut pt).is_err() {
@@ -125,6 +116,17 @@ impl InteractionHandler {
             }
         }
 
+        // 1. ホバー判定の更新
+        let new_hover = Self::hit_test(hwnd, icon_count);
+        if new_hover != self.hovered_index {
+            self.hovered_index = new_hover;
+            // 他のドラッグ中などの操作を優先しつつ, ホバー変更を通知するよ
+            if !self.is_dragging && !self.is_resizing && !self.is_adjusting_opacity {
+                return InteractionAction::HoverChanged { index: new_hover };
+            }
+        }
+
+        // 2. ドラッグ等の差分計算
         if let Some(last_pos) = self.last_screen_pos {
             let dx = pt.x - last_pos.x;
             let dy = pt.y - last_pos.y;
@@ -146,31 +148,24 @@ impl InteractionHandler {
         InteractionAction::None
     }
 
-    /// マウスホイールが回されたときの処理だよ。
     pub fn handle_mouse_wheel(&self, delta: i16) -> InteractionAction {
         let is_ctrl = unsafe { (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
-        
         if is_ctrl {
             let step = 0.05;
             let delta_f = if delta > 0 { step } else { -step };
             return InteractionAction::ChangeOpacity { delta: delta_f };
         }
-        
         InteractionAction::None
     }
 
-    /// キーが押されたときの処理だよ。
     pub fn handle_keydown(&self, virtual_key: u16) -> InteractionAction {
         let is_ctrl = unsafe { (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
-        
         if is_ctrl && virtual_key == 'V' as u16 {
             return InteractionAction::PasteColor;
         }
-        
         InteractionAction::None
     }
 
-    /// マウスボタンが離されたときの処理だよ。
     pub fn handle_lbutton_up(&mut self) {
         self.is_dragging = false;
         self.is_resizing = false;

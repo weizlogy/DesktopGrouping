@@ -7,7 +7,6 @@ use crate::ui::group::model::GroupModel;
 use crate::win32::api::shell;
 
 /// グループ全体を描画するメインコーディネーターだよ！
-/// Resources から必要な部品を揃えて, 各描画関数に仕事を振り分けるよ。
 pub fn draw_group(
     context: &ID2D1DeviceContext,
     width: f32,
@@ -15,74 +14,55 @@ pub fn draw_group(
     model: &GroupModel,
     resources: &mut DrawingResources,
 ) -> Result<(), windows::core::Error> {
-    // 1. 背景と枠線の描画準備
-    let bg_rect = D2D_RECT_F {
-        left: 0.0,
-        top: 0.0,
-        right: width,
-        bottom: height,
-    };
+    // 1. 背景と枠線の描画
+    let bg_rect = D2D_RECT_F { left: 0.0, top: 0.0, right: width, bottom: height };
     let bg_brush = resources.get_brush(context, &model.bg_color_hex)?;
-    let border_brush = resources.get_brush(context, "#FFFFFF33")?; // 半透明の白い枠線
+    let border_brush = resources.get_brush(context, "#FFFFFF33")?; 
 
-    // 背景にのみ透過度を適用するよ！ (仕様変更: アイコンやラベルは透過させない)
     unsafe {
         bg_brush.SetOpacity(model.opacity);
-        border_brush.SetOpacity(model.opacity * 0.5); // 枠線は背景に合わせて薄く
+        border_brush.SetOpacity(model.opacity * 0.5);
     }
 
-    background::draw_rounded_rect(
-        context,
-        &bg_rect,
-        &bg_brush,
-        Some(&border_brush),
-        1.5,
-        8.0,
-    );
+    background::draw_rounded_rect(context, &bg_rect, &bg_brush, Some(&border_brush), 1.5, 8.0);
 
-    // 2. タイトルの描画 (仕様変更: デスクトップをクリーンに保つため廃止)
-    /*
-    let title_brush = resources.get_brush(context, "#FFFFFFFF")?;
-    let format = resources.get_text_format()?;
-    unsafe { title_brush.SetOpacity(1.0); } // 常に不透明
-    // ... draw_text ...
-    */
-
-    // 3. アイコンとラベルの描画 (グリッド配置)
+    // 2. アイコンとラベルの描画
     if !model.icons.is_empty() {
         let layouts = layout::calculate_grid_layout(width, model.icons.len(), 1.0);
-        let icon_label_brush = resources.get_brush(context, "#000000FF")?; // 黒に変更！
+        let icon_label_brush = resources.get_brush(context, "#000000FF")?;
         let format = resources.get_text_format()?;
         
-        // アイコンとラベルは常に不透明で描画するよ！
-        unsafe {
-            icon_label_brush.SetOpacity(1.0);
-        }
+        let highlight_bg_brush = resources.get_brush(context, "#FFFFFF22")?; 
+        let highlight_border_brush = resources.get_brush(context, "#FFFFFF66")?;
+        
+        // 実行中のフィードバック用ブラシ (より明るく!)
+        let executing_bg_brush = resources.get_brush(context, "#FFFFFF66")?;
+        let executing_border_brush = resources.get_brush(context, "#FFFFFFFF")?;
 
         for (i, icon_state) in model.icons.iter().enumerate() {
             if let Some(layout) = layouts.get(i) {
-                // Shell API からアイコンを取得
-                if let Some(hicon) = shell::get_icon_for_path(&icon_state.path) {
-                    // HICON を Direct2D ビットマップに変換 (キャッシュ利用)
-                    if let Ok(bitmap) = resources.get_icon_bitmap(context, hicon) {
-                        // アイコンを描画 (仕様変更: 不透明度 1.0)
-                        icon::draw_icon(context, &bitmap, &layout.icon_rect, 1.0);
-                    }
-                    
-                    // 使い終わった HICON を解放
-                    unsafe {
-                        DestroyIcon(hicon).ok();
-                    }
+                
+                // フィードバック描画 (実行中 > ホバー)
+                if model.executing_index == Some(i) {
+                    background::draw_rounded_rect(
+                        context, &layout.hit_rect, &executing_bg_brush, Some(&executing_border_brush), 1.5, 4.0,
+                    );
+                } else if model.hovered_index == Some(i) {
+                    background::draw_rounded_rect(
+                        context, &layout.hit_rect, &highlight_bg_brush, Some(&highlight_border_brush), 1.0, 4.0,
+                    );
                 }
 
-                // アイコン名を描画 (中央寄せ)
-                label::draw_text(
-                    context,
-                    &icon_state.name,
-                    &layout.text_rect,
-                    &icon_label_brush,
-                    &format,
-                );
+                // アイコン取得と描画
+                if let Some(hicon) = shell::get_icon_for_path(&icon_state.path) {
+                    if let Ok(bitmap) = resources.get_icon_bitmap(context, hicon) {
+                        icon::draw_icon(context, &bitmap, &layout.icon_rect, 1.0);
+                    }
+                    unsafe { DestroyIcon(hicon).ok(); }
+                }
+
+                // ラベル描画
+                label::draw_text(context, &icon_state.name, &layout.text_rect, &icon_label_brush, &format);
             }
         }
     }

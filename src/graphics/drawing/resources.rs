@@ -69,6 +69,18 @@ impl DrawingResources {
             )?;
             f.SetTextAlignment(windows::Win32::Graphics::DirectWrite::DWRITE_TEXT_ALIGNMENT_CENTER)?;
             f.SetParagraphAlignment(windows::Win32::Graphics::DirectWrite::DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+            
+            // 1行に収めるための設定 (WordWrap を無効にし, Trimming を有効にする)
+            f.SetWordWrapping(windows::Win32::Graphics::DirectWrite::DWRITE_WORD_WRAPPING_NO_WRAP)?;
+            
+            let mut trimming = windows::Win32::Graphics::DirectWrite::DWRITE_TRIMMING {
+                granularity: windows::Win32::Graphics::DirectWrite::DWRITE_TRIMMING_GRANULARITY_CHARACTER,
+                delimiter: 0,
+                delimiterCount: 0,
+            };
+            let sign = self.dwrite_factory.CreateEllipsisTrimmingSign(&f)?;
+            f.SetTrimming(&trimming, Some(&sign))?;
+            
             f
         };
 
