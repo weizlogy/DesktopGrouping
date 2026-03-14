@@ -23,10 +23,15 @@ impl GroupRenderer {
             engine.wic_factory.clone(),
         );
 
-        Ok(Self {
-            canvas,
-            resources,
-        })
+        let renderer = Self { canvas, resources };
+
+        // テキストの描画品質を向上させるよ！
+        // 透過ウィンドウでは GRAYSCALE が最も綺麗に馴染むんだ。
+        unsafe {
+            renderer.canvas.d2d_context.SetTextAntialiasMode(windows::Win32::Graphics::Direct2D::D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+        }
+
+        Ok(renderer)
     }
 
     /// グループを描画するよ。
