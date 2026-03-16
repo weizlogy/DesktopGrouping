@@ -14,6 +14,7 @@ pub enum InteractionAction {
     ExecuteIcon { index: usize }, // アイコンの実行
     DeleteIcon { index: usize },  // アイコンの削除
     OpenLocation { index: usize }, // ファイルの場所を開く
+    ReorderIcon { from: usize, to: usize }, // アイコンの並び替え
     DeleteGroup,                 // グループ自体の削除
     HoverChanged { index: Option<usize> }, // ホバー対象の変更
 }
@@ -24,6 +25,7 @@ pub struct InteractionHandler {
     is_dragging: bool,
     is_resizing: bool,
     is_adjusting_opacity: bool,
+    dragged_icon_index: Option<usize>, // 現在ドラッグされているアイコンのインデックス
     hovered_index: Option<usize>, // 現在ホバーされているアイコンのインデックス
 }
 
@@ -34,6 +36,7 @@ impl InteractionHandler {
             is_dragging: false,
             is_resizing: false,
             is_adjusting_opacity: false,
+            dragged_icon_index: None,
             hovered_index: None,
         }
     }
@@ -64,7 +67,7 @@ impl InteractionHandler {
     }
 
     /// マウスボタンが押されたときの処理だよ。
-    pub fn handle_lbutton_down(&mut self) {
+    pub fn handle_lbutton_down(&mut self, hwnd: HWND, icon_count: usize) {
         let mut pt = POINT::default();
         unsafe {
             let _ = GetCursorPos(&mut pt);
@@ -80,6 +83,9 @@ impl InteractionHandler {
             self.is_resizing = true;
         } else if is_alt {
             self.is_adjusting_opacity = true;
+        } else {
+            // 修飾キーがない場合はアイコンのドラッグ（並び替え）を開始するよ
+            self.dragged_icon_index = Self::hit_test(hwnd, icon_count);
         }
 
         self.last_screen_pos = Some(pt);
@@ -120,8 +126,17 @@ impl InteractionHandler {
         let new_hover = Self::hit_test(hwnd, icon_count);
         if new_hover != self.hovered_index {
             self.hovered_index = new_hover;
-            // 他のドラッグ中などの操作を優先しつつ, ホバー変更を通知するよ
-            if !self.is_dragging && !self.is_resizing && !self.is_adjusting_opacity {
+            
+            // アイコンをドラッグ中かつ, 新しいアイコンの上にマウスが来たら並び替えを発行するよ
+            if let (Some(from), Some(to)) = (self.dragged_icon_index, new_hover) {
+                if from != to {
+                    self.dragged_icon_index = Some(to); // ドラッグ元を現在の位置に更新
+                    return InteractionAction::ReorderIcon { from, to };
+                }
+            }
+            
+            // 他の操作を優先しつつ, ホバー変更を通知するよ
+            if !self.is_dragging && !self.is_resizing && !self.is_adjusting_opacity && self.dragged_icon_index.is_none() {
                 return InteractionAction::HoverChanged { index: new_hover };
             }
         }
@@ -170,6 +185,7 @@ impl InteractionHandler {
         self.is_dragging = false;
         self.is_resizing = false;
         self.is_adjusting_opacity = false;
+        self.dragged_icon_index = None;
         self.last_screen_pos = None;
     }
 }

@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::rc::Rc;
 use desktop_grouping::{graphics, logger, tray, win32};
 

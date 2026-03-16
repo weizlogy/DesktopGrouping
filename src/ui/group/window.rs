@@ -105,7 +105,7 @@ impl GroupWindow {
     }
 
     pub fn handle_lbutton_down(&mut self) {
-        self.interaction.handle_lbutton_down();
+        self.interaction.handle_lbutton_down(self.hwnd, self.model.icons.len());
         unsafe { windows::Win32::UI::Input::KeyboardAndMouse::SetCapture(self.hwnd); }
     }
 
@@ -229,6 +229,18 @@ impl GroupWindow {
                 if let Some(path) = icon_path {
                     log::info!("Opening location: {:?}", path);
                     api::shell::open_file_location(&path)?;
+                }
+            }
+            InteractionAction::ReorderIcon { from, to } => {
+                if from < self.model.icons.len() && to < self.model.icons.len() {
+                    self.model.icons.swap(from, to);
+                    let mut settings = manager::get_settings_writer();
+                    if let Some(child) = settings.children.get_mut(&self.model.id) {
+                        child.icons.swap(from, to);
+                        drop(settings);
+                        manager::save();
+                    }
+                    self.draw()?;
                 }
             }
             InteractionAction::DeleteIcon { index } => {
