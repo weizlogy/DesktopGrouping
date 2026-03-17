@@ -7,6 +7,7 @@ pub struct GroupModel {
     pub title: String,
     pub bg_color_hex: String,
     pub opacity: f32, // 0.0 ~ 1.0
+    pub icon_size: f32,
     pub icons: Vec<IconState>,
     pub hovered_index: Option<usize>,
     pub executing_index: Option<usize>, // 一瞬だけ光らせるための状態
@@ -24,6 +25,7 @@ impl GroupModel {
         title: String,
         bg_color_hex: String,
         opacity: f32,
+        icon_size: f32,
         initial_icons: Vec<PathBuf>,
     ) -> Self {
         let icons = initial_icons
@@ -43,6 +45,7 @@ impl GroupModel {
             title,
             bg_color_hex,
             opacity,
+            icon_size,
             icons,
             hovered_index: None,
             executing_index: None,

@@ -37,7 +37,7 @@ pub fn draw_group(
 
     // 2. アイコンとラベルの描画
     if !model.icons.is_empty() {
-        let layouts = layout::calculate_grid_layout(width, model.icons.len(), 1.0);
+        let layouts = layout::calculate_grid_layout(width, model.icons.len(), model.icon_size, 1.0);
         let icon_label_brush = resources.get_brush(context, text_color_hex)?;
         let format = resources.get_text_format()?;
         

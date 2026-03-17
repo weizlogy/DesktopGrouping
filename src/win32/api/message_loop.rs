@@ -52,6 +52,7 @@ pub fn run_message_loop(engine: Rc<GraphicsEngine>) -> Result<(), windows::core:
                     "Restored Group".to_string(),
                     child.bg_color.clone(),
                     child.opacity,
+                    child.icon_size,
                     child.width,
                     child.height,
                     icons,
@@ -152,19 +153,20 @@ fn handle_menu_event(
             let title = "New Group".to_string();
             let bg_color = "#000000".to_string();
             let opacity = 0.5f32;
+            let icon_size = 48.0f32;
             let width = 300u32;
             let height = 200u32;
 
             {
                 let mut settings = manager::get_settings_writer();
                 settings.children.insert(id.clone(), ChildSettings {
-                    x: 100, y: 100, width, height, bg_color: bg_color.clone(), opacity, ..Default::default()
+                    x: 100, y: 100, width, height, bg_color: bg_color.clone(), opacity, icon_size, ..Default::default()
                 });
                 drop(settings);
                 manager::save();
             }
 
-            match GroupWindow::create(engine.clone(), id, title, bg_color, opacity, width, height, Vec::new()) {
+            match GroupWindow::create(engine.clone(), id, title, bg_color, opacity, icon_size, width, height, Vec::new()) {
                 Ok(mut window) => {
                     let _ = window.draw();
                     windows.push(window);

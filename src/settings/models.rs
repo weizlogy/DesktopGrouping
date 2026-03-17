@@ -26,6 +26,7 @@ pub struct ChildSettings {
     pub height: u32,
     pub bg_color: String,
     pub opacity: f32, // 0.0 ~ 1.0
+    pub icon_size: f32, // アイコンの論理サイズ (デフォルト 48.0)
     pub icons: Vec<PersistentIconInfo>,
     
     // --- マルチモニター・高DPI対応のための追加フィールド ---
@@ -63,6 +64,7 @@ impl Default for ChildSettings {
             height: 200,
             bg_color: "#FFFFFF99".to_string(),
             opacity: 1.0,
+            icon_size: 48.0,
             icons: Vec::new(),
             monitor_name: None,
             monitor_x: None,

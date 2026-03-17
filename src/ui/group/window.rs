@@ -33,6 +33,7 @@ impl GroupWindow {
         title: String,
         bg_color_hex: String,
         opacity: f32,
+        icon_size: f32,
         width: u32,
         height: u32,
         icons: Vec<std::path::PathBuf>,
@@ -79,7 +80,7 @@ impl GroupWindow {
 
         api::show_window::move_to_bottom(hwnd);
 
-        let model = GroupModel::new(id, title, bg_color_hex, opacity, icons);
+        let model = GroupModel::new(id, title, bg_color_hex, opacity, icon_size, icons);
         let renderer = GroupRenderer::new(engine, hwnd, width, height)?;
         let interaction = InteractionHandler::new();
 
@@ -105,22 +106,22 @@ impl GroupWindow {
     }
 
     pub fn handle_lbutton_down(&mut self) {
-        self.interaction.handle_lbutton_down(self.hwnd, self.model.icons.len());
+        self.interaction.handle_lbutton_down(self.hwnd, self.model.icons.len(), self.model.icon_size);
         unsafe { windows::Win32::UI::Input::KeyboardAndMouse::SetCapture(self.hwnd); }
     }
 
     pub fn handle_lbutton_dblclk(&mut self) -> Result<(), windows::core::Error> {
-        let action = self.interaction.handle_lbutton_dblclk(self.hwnd, self.model.icons.len());
+        let action = self.interaction.handle_lbutton_dblclk(self.hwnd, self.model.icons.len(), self.model.icon_size);
         self.perform_action(action)
     }
 
     pub fn handle_rbutton_down(&mut self) -> Result<(), windows::core::Error> {
-        let action = self.interaction.handle_rbutton_down(self.hwnd, self.model.icons.len());
+        let action = self.interaction.handle_rbutton_down(self.hwnd, self.model.icons.len(), self.model.icon_size);
         self.perform_action(action)
     }
 
     pub fn handle_mouse_move(&mut self) -> Result<(), windows::core::Error> {
-        let action = self.interaction.handle_mouse_move(self.hwnd, self.model.icons.len());
+        let action = self.interaction.handle_mouse_move(self.hwnd, self.model.icons.len(), self.model.icon_size);
         self.perform_action(action)
     }
 
@@ -190,8 +191,18 @@ impl GroupWindow {
                 self.draw()?;
             }
             InteractionAction::PasteColor => {
-                if let Some(hex_raw) = api::utils::get_clipboard_text() {
-                    let mut hex = hex_raw.trim().to_string();
+                if let Some(text_raw) = api::utils::get_clipboard_text() {
+                    let text = text_raw.trim().to_lowercase();
+                    
+                    // 1. アイコンサイズ指定の解析 (例: size:64)
+                    if text.starts_with("size:") {
+                        if let Ok(size) = text["size:".len()..].parse::<f32>() {
+                            return self.perform_action(InteractionAction::ChangeIconSize { size });
+                        }
+                    }
+
+                    // 2. 背景色指定の解析 (#RRGGBB, #random)
+                    let mut hex = text_raw.trim().to_string();
                     if hex.to_lowercase() == "#random" {
                         use rand::Rng;
                         let mut rng = rand::thread_rng();
@@ -208,6 +219,16 @@ impl GroupWindow {
                         self.draw()?;
                     }
                 }
+            }
+            InteractionAction::ChangeIconSize { size } => {
+                self.model.icon_size = size.clamp(16.0, 256.0);
+                let mut settings = manager::get_settings_writer();
+                if let Some(child) = settings.children.get_mut(&self.model.id) {
+                    child.icon_size = self.model.icon_size;
+                    drop(settings);
+                    manager::save();
+                }
+                self.draw()?;
             }
             InteractionAction::ExecuteIcon { index } => {
                 // 先にパスだけを取得して, self への借用を終わらせるよ
