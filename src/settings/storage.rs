@@ -45,8 +45,18 @@ pub fn load_settings() -> Result<Settings, String> {
     let contents = fs::read_to_string(&config_path)
         .map_err(|e| format!("Failed to read config file: {}", e))?;
 
-    let settings: Settings = toml::from_str(&contents)
-        .map_err(|e| format!("Failed to parse config file: {}. Please check TOML syntax.", e))?;
+    let mut settings: Settings = match toml::from_str(&contents) {
+        Ok(s) => s,
+        Err(e) => {
+            let bad_path = config_path.with_extension("toml.bad");
+            log::error!("Failed to parse config file: {}. Backing up to {:?}", e, bad_path);
+            let _ = fs::rename(&config_path, &bad_path); // 失敗ファイルを退避
+            return Err(format!("Settings corruption detected. Original file saved as .bad"));
+        }
+    };
+
+    // 論理バリデーションを実行
+    settings.validate();
 
     Ok(settings)
 }

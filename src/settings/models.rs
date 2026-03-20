@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN};
 
 /// 設定ファイルに永続化するためのアイコン情報。
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -14,6 +15,15 @@ pub struct PersistentIconInfo {
 pub struct AppSettings {
     pub font_size: f32,
     pub font_family: String,
+}
+
+impl AppSettings {
+    pub fn validate(&mut self) {
+        self.font_size = self.font_size.clamp(8.0, 72.0);
+        if self.font_family.is_empty() {
+            self.font_family = "Meiryo".to_string();
+        }
+    }
 }
 
 /// 各グループ（子ウィンドウ）ごとの個別設定。
@@ -36,12 +46,50 @@ pub struct ChildSettings {
     pub dpi_scale: f32, // 保存時の DPI スケーリング倍率 (1.0 = 100%, 1.5 = 150% 等)
 }
 
+impl ChildSettings {
+    pub fn validate(&mut self) {
+        self.opacity = self.opacity.clamp(0.1, 1.0);
+        self.icon_size = self.icon_size.clamp(16.0, 256.0);
+        self.width = self.width.max(50);
+        self.height = self.height.max(50);
+
+        if self.bg_color.is_empty() || !self.bg_color.starts_with('#') {
+            self.bg_color = "#FFFFFF99".to_string();
+        }
+
+        // 画面外に飛び出している場合の救済措置
+        unsafe {
+            let vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
+            let vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+            let vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            let vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
+            // ウィンドウの左上が画面外なら (100, 100) に戻す
+            // 厳密には「完全に外」かを判定すべきだが, 救済を優先するよ
+            if self.x < vx || self.x > vx + vw || self.y < vy || self.y > vy + vh {
+                log::warn!("Window position ({}, {}) is out of screen. Resetting to (100, 100).", self.x, self.y);
+                self.x = 100;
+                self.y = 100;
+            }
+        }
+    }
+}
+
 /// 設定ファイル全体の構造。
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[serde(default)]
 pub struct Settings {
     pub app: AppSettings,
     pub children: HashMap<String, ChildSettings>, // キーは ID 文字列 (タイムスタンプ)
+}
+
+impl Settings {
+    pub fn validate(&mut self) {
+        self.app.validate();
+        for child in self.children.values_mut() {
+            child.validate();
+        }
+    }
 }
 
 // --- 各構造体のデフォルト値の実装 ---

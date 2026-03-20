@@ -53,6 +53,7 @@ pub fn draw_group(
         for (i, icon_state) in model.icons.iter().enumerate() {
             if let Some(layout) = layouts.get(i) {
                 
+                // ホバーや実行中のハイライト描画
                 if model.executing_index == Some(i) {
                     background::draw_rounded_rect(
                         context, &layout.hit_rect, &executing_bg_brush, Some(&executing_border_brush), 1.5, 4.0,
@@ -63,14 +64,28 @@ pub fn draw_group(
                     );
                 }
 
-                if let Some(hicon) = shell::get_icon_for_path(&icon_state.path) {
-                    if let Ok(bitmap) = resources.get_icon_bitmap(context, hicon) {
-                        icon::draw_icon(context, &bitmap, &layout.icon_rect, 1.0);
+                if icon_state.exists {
+                    // アイコンが存在する場合の通常描画
+                    if let Some(hicon) = shell::get_icon_for_path(&icon_state.path) {
+                        if let Ok(bitmap) = resources.get_icon_bitmap(context, hicon) {
+                            icon::draw_icon(context, &bitmap, &layout.icon_rect, 1.0);
+                        }
+                        unsafe { DestroyIcon(hicon).ok(); }
                     }
-                    unsafe { DestroyIcon(hicon).ok(); }
+                    label::draw_text(context, &icon_state.name, &layout.text_rect, &icon_label_brush, &format);
+                } else {
+                    // 存在しないアイコン: 背景色の反転色で四角を描画
+                    let (ir, ig, ib) = layout::invert_color(bg_color.r, bg_color.g, bg_color.b);
+                    let inv_hex = format!("#{:02X}{:02X}{:02X}FF", (ir * 255.0) as u8, (ig * 255.0) as u8, (ib * 255.0) as u8);
+                    let inv_brush = resources.get_brush(context, &inv_hex)?;
+                    
+                    background::draw_rounded_rect(context, &layout.icon_rect, &inv_brush, None, 0.0, 4.0);
+                    
+                    // 警告色のラベルで強調
+                    let err_color_hex = layout::get_error_text_color(is_dark);
+                    let err_brush = resources.get_brush(context, err_color_hex)?;
+                    label::draw_text(context, &icon_state.name, &layout.text_rect, &err_brush, &format);
                 }
-
-                label::draw_text(context, &icon_state.name, &layout.text_rect, &icon_label_brush, &format);
             }
         }
     }

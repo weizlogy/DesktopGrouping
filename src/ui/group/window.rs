@@ -331,7 +331,7 @@ impl GroupWindow {
     pub fn handle_drop_files(&mut self, paths: Vec<std::path::PathBuf>) -> Result<(), windows::core::Error> {
         for path in paths {
             let name = path.file_stem().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
-            self.model.icons.push(crate::ui::group::model::IconState { name, path: path.clone() });
+            self.model.icons.push(crate::ui::group::model::IconState { name, path: path.clone(), exists: true });
             let mut settings = manager::get_settings_writer();
             if let Some(child) = settings.children.get_mut(&self.model.id) {
                 child.icons.push(crate::settings::models::PersistentIconInfo { path: path.clone() });

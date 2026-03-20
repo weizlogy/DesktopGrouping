@@ -17,6 +17,7 @@ pub struct GroupModel {
 pub struct IconState {
     pub name: String,
     pub path: PathBuf,
+    pub exists: bool,
 }
 
 impl GroupModel {
@@ -36,7 +37,8 @@ impl GroupModel {
                     .and_then(|n| n.to_str())
                     .unwrap_or("Unknown")
                     .to_string();
-                IconState { name, path }
+                let exists = path.exists();
+                IconState { name, path, exists }
             })
             .collect();
 

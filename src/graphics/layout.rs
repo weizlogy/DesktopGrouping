@@ -78,3 +78,17 @@ pub fn is_dark_color(r: f32, g: f32, b: f32) -> bool {
     let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     luminance < 0.5
 }
+
+/// 色を反転させるよ (透明度は維持)
+pub fn invert_color(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
+    (1.0 - r, 1.0 - g, 1.0 - b)
+}
+
+/// 背景色に応じて, エラー時に目立つテキスト色を返すよ
+pub fn get_error_text_color(is_dark_bg: bool) -> &'static str {
+    if is_dark_bg {
+        "#FF9900FF" // 暗い背景にはオレンジ
+    } else {
+        "#CC0000FF" // 明るい背景には濃い赤
+    }
+}
