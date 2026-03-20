@@ -35,7 +35,13 @@ impl GroupRenderer {
     }
 
     /// グループを描画するよ。
-    pub fn render(&mut self, model: &GroupModel, width: f32, height: f32) -> Result<(), windows::core::Error> {
+    pub fn render(
+        &mut self,
+        model: &GroupModel,
+        width: f32,
+        height: f32,
+        is_resizing: bool,
+    ) -> Result<(), windows::core::Error> {
         self.canvas.begin_draw();
 
         // painter に描画を依頼するよ。
@@ -47,7 +53,10 @@ impl GroupRenderer {
             &mut self.resources,
         )?;
 
-        self.canvas.end_draw()?;
+        // リサイズ中は VSync を待たずに即座に描画を反映させることで, 
+        // マウスカーソルへの追従性を極限まで高めるよ！
+        let sync_interval = if is_resizing { 0 } else { 1 };
+        self.canvas.end_draw(sync_interval)?;
         Ok(())
     }
 

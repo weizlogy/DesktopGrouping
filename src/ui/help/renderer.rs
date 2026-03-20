@@ -59,7 +59,7 @@ impl HelpRenderer {
         // ヘルプテキストの描画
         help::draw_help(context, width, height, text_color_hex, &mut self.resources)?;
 
-        self.canvas.end_draw()?;
+        self.canvas.end_draw(1)?;
         Ok(())
     }
 

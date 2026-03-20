@@ -191,6 +191,13 @@ fn handle_menu_event(
                 log::info!("Help window is already open.");
             }
         }
+        "1004" => { // Open Settings Location
+            if let Ok(path) = crate::settings::storage::get_config_path() {
+                if let Some(parent) = path.parent() {
+                    let _ = api::shell::open_file_location(parent);
+                }
+            }
+        }
         "1002" => { // Quit
             unsafe {
                 windows::Win32::UI::WindowsAndMessaging::PostQuitMessage(0);

@@ -6,6 +6,7 @@ use tray_icon::{
 // トレイメニューのIDを定数化するよっ！٩(ˊᗜˋ*)و
 pub const MENU_ID_NEW_GROUP: &str = "1001";
 pub const MENU_ID_HELP: &str = "1003";
+pub const MENU_ID_OPEN_SETTINGS: &str = "1004";
 pub const MENU_ID_QUIT: &str = "1002";
 
 /// トレイアイコンを作成します。
@@ -18,20 +19,23 @@ pub const MENU_ID_QUIT: &str = "1002";
 ///
 /// 作成されたトレイアイコン。
 pub fn create_tray() -> TrayIcon {
-    // まずは、トレイアイコンに表示するメニューを作るよ！(<em>´ω｀</em>)
+    // まずは、トレイアイコンに表示するメニューを作るよ！(*´ω｀*)
     let menu = Menu::new();
     // 「新しいグループを作る」メニュー項目だよ！クリックできるように true にしてるんだ♪
     let new_group = MenuItem::with_id("1001", "New Group", true, None);
     let help_item = MenuItem::with_id("1003", "Help", true, None); // Help メニュー項目
+    let open_settings = MenuItem::with_id("1004", "Open Settings Location", true, None);
     let quit_i = MenuItem::with_id("1002", "Quit", true, None);
 
     menu.append_items(&[
         &new_group,
         &help_item,
+        &open_settings,
         &PredefinedMenuItem::separator(),
         &quit_i,
     ])
     .expect("menu append.");
+
 
     // よーし、いよいよトレイアイコン本体を作るよ！٩(ˊᗜˋ*)و
     return TrayIconBuilder::new()

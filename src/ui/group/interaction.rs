@@ -195,4 +195,8 @@ impl InteractionHandler {
         self.dragged_icon_index = None;
         self.last_screen_pos = None;
     }
+
+    pub fn is_dragging(&self) -> bool { self.is_dragging }
+    pub fn is_resizing(&self) -> bool { self.is_resizing }
+    pub fn is_adjusting_opacity(&self) -> bool { self.is_adjusting_opacity }
 }

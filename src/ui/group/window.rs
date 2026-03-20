@@ -106,7 +106,9 @@ impl GroupWindow {
         unsafe { windows::Win32::UI::WindowsAndMessaging::GetClientRect(self.hwnd, &mut rect)?; }
         let width = (rect.right - rect.left) as f32;
         let height = (rect.bottom - rect.top) as f32;
-        self.renderer.render(&self.model, width, height)
+
+        let is_resizing = self.interaction.is_resizing();
+        self.renderer.render(&self.model, width, height, is_resizing)
     }
 
     pub fn handle_resize(&mut self, width: u32, height: u32) -> Result<(), windows::core::Error> {
