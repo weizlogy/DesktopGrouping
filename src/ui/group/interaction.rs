@@ -43,7 +43,7 @@ impl InteractionHandler {
     }
 
     /// マウス座標からアイコンのインデックスを特定するよ！
-    fn hit_test(hwnd: HWND, icon_count: usize, icon_size: f32) -> Option<usize> {
+    fn hit_test(hwnd: HWND, icon_count: usize, icon_size: f32, font_size: f32) -> Option<usize> {
         let mut pt = POINT::default();
         let mut rect = RECT::default();
         unsafe {
@@ -56,7 +56,7 @@ impl InteractionHandler {
         let rel_y = (pt.y - rect.top) as f32;
         let width = (rect.right - rect.left) as f32;
 
-        let layouts = layout::calculate_grid_layout(width, icon_count, icon_size, 1.0);
+        let layouts = layout::calculate_grid_layout(width, icon_count, icon_size, font_size, 1.0);
         for (i, layout) in layouts.iter().enumerate() {
             if rel_x >= layout.hit_rect.left && rel_x <= layout.hit_rect.right &&
                rel_y >= layout.hit_rect.top && rel_y <= layout.hit_rect.bottom {
@@ -68,7 +68,7 @@ impl InteractionHandler {
     }
 
     /// マウスボタンが押されたときの処理だよ。
-    pub fn handle_lbutton_down(&mut self, hwnd: HWND, icon_count: usize, icon_size: f32) {
+    pub fn handle_lbutton_down(&mut self, hwnd: HWND, icon_count: usize, icon_size: f32, font_size: f32) {
         let mut pt = POINT::default();
         unsafe {
             let _ = GetCursorPos(&mut pt);
@@ -86,25 +86,31 @@ impl InteractionHandler {
             self.is_adjusting_opacity = true;
         } else {
             // 修飾キーがない場合はアイコンのドラッグ（並び替え）を開始するよ
-            self.dragged_icon_index = Self::hit_test(hwnd, icon_count, icon_size);
+            self.dragged_icon_index = Self::hit_test(hwnd, icon_count, icon_size, font_size);
         }
 
         self.last_screen_pos = Some(pt);
     }
 
     /// ダブルクリックされたときの処理だよ。
-    pub fn handle_lbutton_dblclk(&self, hwnd: HWND, icon_count: usize, icon_size: f32) -> InteractionAction {
-        if let Some(index) = Self::hit_test(hwnd, icon_count, icon_size) {
+    pub fn handle_lbutton_dblclk(&self, hwnd: HWND, icon_count: usize, icon_size: f32, font_size: f32) -> InteractionAction {
+        if let Some(index) = Self::hit_test(hwnd, icon_count, icon_size, font_size) {
             return InteractionAction::ExecuteIcon { index };
         }
         InteractionAction::None
     }
 
     /// 右クリックされたときの処理だよ。
-    pub fn handle_rbutton_down(&self, hwnd: HWND, icon_count: usize, icon_size: f32) -> InteractionAction {
+    pub fn handle_rbutton_down(&self, _hwnd: HWND, _icon_count: usize, _icon_size: f32, _font_size: f32) -> InteractionAction {
+        // ダウン時は何もしないか, メニュー表示の準備のみ。
+        InteractionAction::None
+    }
+
+    /// 右クリックが離されたときの処理だよ。
+    pub fn handle_rbutton_up(&self, hwnd: HWND, icon_count: usize, icon_size: f32, font_size: f32) -> InteractionAction {
         use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
         let is_ctrl = unsafe { (GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
-        let hit_index = Self::hit_test(hwnd, icon_count, icon_size);
+        let hit_index = Self::hit_test(hwnd, icon_count, icon_size, font_size);
 
         match (hit_index, is_ctrl) {
             (Some(index), true) => InteractionAction::DeleteIcon { index },
@@ -115,7 +121,7 @@ impl InteractionHandler {
     }
 
     /// マウスが動いたときの処理だよ。
-    pub fn handle_mouse_move(&mut self, hwnd: HWND, icon_count: usize, icon_size: f32) -> InteractionAction {
+    pub fn handle_mouse_move(&mut self, hwnd: HWND, icon_count: usize, icon_size: f32, font_size: f32) -> InteractionAction {
         let mut pt = POINT::default();
         unsafe {
             if GetCursorPos(&mut pt).is_err() {
@@ -124,7 +130,7 @@ impl InteractionHandler {
         }
 
         // 1. ホバー判定の更新
-        let new_hover = Self::hit_test(hwnd, icon_count, icon_size);
+        let new_hover = Self::hit_test(hwnd, icon_count, icon_size, font_size);
         if new_hover != self.hovered_index {
             self.hovered_index = new_hover;
             

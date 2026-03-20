@@ -16,8 +16,8 @@ pub struct Canvas {
     engine: Rc<GraphicsEngine>,
     swap_chain: IDXGISwapChain1,
     pub d2d_context: ID2D1DeviceContext,
-    comp_target: IDCompositionTarget,
-    comp_visual: IDCompositionVisual,
+    pub comp_target: IDCompositionTarget,  // never read 対策
+    pub comp_visual: IDCompositionVisual,  // never read 対策
 }
 
 impl Canvas {

@@ -9,6 +9,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, GetAsyncKeyState,
 use windows::Win32::Foundation::{POINT, RECT};
 use tray_icon::{TrayIconEvent, menu::MenuEvent};
 use crate::ui::group::GroupWindow;
+use crate::ui::help::HelpWindow;
 use crate::graphics::GraphicsEngine;
 use crate::settings::{manager, models::ChildSettings};
 use crate::ui::group::interaction::InteractionAction;
@@ -36,6 +37,7 @@ pub fn run_message_loop(engine: Rc<GraphicsEngine>) -> Result<(), windows::core:
 
         // 複数のグループウィンドウを管理する
         let mut windows: Vec<Box<GroupWindow>> = Vec::new();
+        let mut help_window: Option<Box<HelpWindow>> = None;
 
         // キーの状態管理
         let mut v_was_down = false;
@@ -88,6 +90,11 @@ pub fn run_message_loop(engine: Rc<GraphicsEngine>) -> Result<(), windows::core:
                     let target_hwnd = windows::Win32::Foundation::HWND(msg.wParam.0 as isize);
                     log::info!("Removing window from management list: {:?}", target_hwnd);
                     windows.retain(|w| w.hwnd != target_hwnd);
+                    if let Some(ref h) = help_window {
+                        if h.hwnd == target_hwnd {
+                            help_window = None;
+                        }
+                    }
                 }
 
                 TranslateMessage(&msg);
@@ -101,7 +108,7 @@ pub fn run_message_loop(engine: Rc<GraphicsEngine>) -> Result<(), windows::core:
 
             // 3. メニューのイベントを処理する
             if let Ok(event) = menu_channel.try_recv() {
-                handle_menu_event(event, &engine, &mut windows);
+                handle_menu_event(event, &engine, &mut windows, &mut help_window);
             }
 
             // 4. キー入力を監視
@@ -124,10 +131,6 @@ pub fn run_message_loop(engine: Rc<GraphicsEngine>) -> Result<(), windows::core:
             }
             v_was_down = v_is_down;
 
-            // 5. 定期的なメンテナンス (現在は特に不要)
-
-            // 6. 次のイベントが来るまで待機
-
             MsgWaitForMultipleObjectsEx(None, 10, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         }
     }
@@ -145,7 +148,8 @@ fn handle_tray_event(event: TrayIconEvent) {
 fn handle_menu_event(
     event: MenuEvent,
     engine: &Rc<GraphicsEngine>,
-    windows: &mut Vec<Box<GroupWindow>>
+    windows: &mut Vec<Box<GroupWindow>>,
+    help_window: &mut Option<Box<HelpWindow>>
 ) {
     match event.id.0.as_str() {
         "1001" => { // New Group
@@ -172,6 +176,19 @@ fn handle_menu_event(
                     windows.push(window);
                 }
                 Err(e) => log::error!("Failed to create group window: {}", e),
+            }
+        }
+        "1003" => { // Help
+            if help_window.is_none() {
+                match HelpWindow::create(engine.clone()) {
+                    Ok(mut window) => {
+                        let _ = window.draw();
+                        *help_window = Some(window);
+                    }
+                    Err(e) => log::error!("Failed to create help window: {}", e),
+                }
+            } else {
+                log::info!("Help window is already open.");
             }
         }
         "1002" => { // Quit

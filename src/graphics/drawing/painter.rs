@@ -37,9 +37,12 @@ pub fn draw_group(
 
     // 2. アイコンとラベルの描画
     if !model.icons.is_empty() {
-        let layouts = layout::calculate_grid_layout(width, model.icons.len(), model.icon_size, 1.0);
+        let settings = crate::settings::manager::get_settings_reader();
+        let layouts = layout::calculate_grid_layout(width, model.icons.len(), model.icon_size, settings.app.font_size, 1.0);
         let icon_label_brush = resources.get_brush(context, text_color_hex)?;
-        let format = resources.get_text_format()?;
+        
+        let format = resources.get_text_format(&settings.app.font_family, settings.app.font_size)?;
+        drop(settings);
         
         let highlight_bg_brush = resources.get_brush(context, if is_dark { "#FFFFFF22" } else { "#00000011" })?; 
         let highlight_border_brush = resources.get_brush(context, if is_dark { "#FFFFFF66" } else { "#00000033" })?;

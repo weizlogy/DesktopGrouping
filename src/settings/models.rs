@@ -13,7 +13,7 @@ pub struct PersistentIconInfo {
 #[serde(default)]
 pub struct AppSettings {
     pub font_size: f32,
-    pub font_path: String,
+    pub font_family: String,
 }
 
 /// 各グループ（子ウィンドウ）ごとの個別設定。
@@ -49,8 +49,8 @@ pub struct Settings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            font_size: 16.0,
-            font_path: String::new(),
+            font_size: 12.0,
+            font_family: "Meiryo".to_string(),
         }
     }
 }

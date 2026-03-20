@@ -16,9 +16,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 // タイマー ID の定義
 const IDT_EXECUTE_FLASH: usize = 1;
-
 /// グループウィンドウを統括するコンポーネントだよ！
+#[repr(C)]
 pub struct GroupWindow {
+    pub window_type: crate::ui::WindowType,
     pub hwnd: HWND,
     pub model: GroupModel,
     pub renderer: GroupRenderer,
@@ -39,6 +40,7 @@ impl GroupWindow {
         icons: Vec<std::path::PathBuf>,
     ) -> Result<Box<Self>, windows::core::Error> {
         let instance = unsafe { GetModuleHandleW(None)? };
+
         let class_name_str = "DesktopGroupingGroupClass";
         let class_name = api::utils::to_wide(class_name_str);
         let window_name = api::utils::to_wide(&title);
@@ -84,7 +86,13 @@ impl GroupWindow {
         let renderer = GroupRenderer::new(engine, hwnd, width, height)?;
         let interaction = InteractionHandler::new();
 
-        let window = Box::new(Self { hwnd, model, renderer, interaction });
+        let window = Box::new(Self {
+            window_type: crate::ui::WindowType::Group,
+            hwnd,
+            model,
+            renderer,
+            interaction,
+        });
 
         unsafe {
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, &*window as *const Self as isize);
@@ -106,22 +114,42 @@ impl GroupWindow {
     }
 
     pub fn handle_lbutton_down(&mut self) {
-        self.interaction.handle_lbutton_down(self.hwnd, self.model.icons.len(), self.model.icon_size);
+        let settings = manager::get_settings_reader();
+        let font_size = settings.app.font_size;
+        drop(settings);
+        self.interaction.handle_lbutton_down(self.hwnd, self.model.icons.len(), self.model.icon_size, font_size);
         unsafe { windows::Win32::UI::Input::KeyboardAndMouse::SetCapture(self.hwnd); }
     }
 
     pub fn handle_lbutton_dblclk(&mut self) -> Result<(), windows::core::Error> {
-        let action = self.interaction.handle_lbutton_dblclk(self.hwnd, self.model.icons.len(), self.model.icon_size);
+        let settings = manager::get_settings_reader();
+        let font_size = settings.app.font_size;
+        drop(settings);
+        let action = self.interaction.handle_lbutton_dblclk(self.hwnd, self.model.icons.len(), self.model.icon_size, font_size);
         self.perform_action(action)
     }
 
     pub fn handle_rbutton_down(&mut self) -> Result<(), windows::core::Error> {
-        let action = self.interaction.handle_rbutton_down(self.hwnd, self.model.icons.len(), self.model.icon_size);
+        let settings = manager::get_settings_reader();
+        let font_size = settings.app.font_size;
+        drop(settings);
+        let action = self.interaction.handle_rbutton_down(self.hwnd, self.model.icons.len(), self.model.icon_size, font_size);
+        self.perform_action(action)
+    }
+
+    pub fn handle_rbutton_up(&mut self) -> Result<(), windows::core::Error> {
+        let settings = manager::get_settings_reader();
+        let font_size = settings.app.font_size;
+        drop(settings);
+        let action = self.interaction.handle_rbutton_up(self.hwnd, self.model.icons.len(), self.model.icon_size, font_size);
         self.perform_action(action)
     }
 
     pub fn handle_mouse_move(&mut self) -> Result<(), windows::core::Error> {
-        let action = self.interaction.handle_mouse_move(self.hwnd, self.model.icons.len(), self.model.icon_size);
+        let settings = manager::get_settings_reader();
+        let font_size = settings.app.font_size;
+        drop(settings);
+        let action = self.interaction.handle_mouse_move(self.hwnd, self.model.icons.len(), self.model.icon_size, font_size);
         self.perform_action(action)
     }
 
@@ -283,7 +311,8 @@ impl GroupWindow {
                 manager::save();
                 unsafe {
                     windows::Win32::UI::WindowsAndMessaging::PostMessageW(
-                        self.hwnd, api::WM_REMOVE_WINDOW,
+                        windows::Win32::Foundation::HWND(0), // スレッドメッセージとして送信
+                        api::WM_REMOVE_WINDOW,
                         windows::Win32::Foundation::WPARAM(self.hwnd.0 as usize),
                         windows::Win32::Foundation::LPARAM(0),
                     ).ok();

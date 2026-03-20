@@ -1,2 +1,9 @@
 pub mod group;
-// pub mod settings_window;
+pub mod help;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum WindowType {
+    Group,
+    Help,
+}

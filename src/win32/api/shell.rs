@@ -1,7 +1,7 @@
-use windows::core::{PCWSTR, ComInterface};
+use windows::core::{PCWSTR};
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_SYSICONINDEX, SHGetImageList, SHIL_EXTRALARGE, ShellExecuteW};
 use windows::Win32::UI::Controls::IImageList;
-use windows::Win32::UI::WindowsAndMessaging::{HICON, SW_SHOWNORMAL, DestroyIcon};
+use windows::Win32::UI::WindowsAndMessaging::{HICON, SW_SHOWNORMAL};
 use crate::win32::api::utils::to_wide;
 use std::path::Path;
 
@@ -10,9 +10,9 @@ use std::path::Path;
 pub fn get_icon_for_path(path: &Path) -> Option<HICON> {
     let path_str = path.to_string_lossy();
     let wide_path = to_wide(&path_str);
-    
+
     let mut shfi = SHFILEINFOW::default();
-    
+
     // 1. システムイメージリスト内のインデックスを取得する
     let result = unsafe {
         SHGetFileInfoW(
@@ -63,7 +63,7 @@ pub fn open_file_location(path: &Path) -> Result<(), windows::core::Error> {
     let arg = format!(r#"/select,"{}""#, path_str);
     let wide_arg = to_wide(&arg);
     let wide_explorer = to_wide("explorer.exe");
-    
+
     unsafe {
         ShellExecuteW(
             None,

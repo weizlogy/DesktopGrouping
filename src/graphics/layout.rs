@@ -16,14 +16,15 @@ pub fn calculate_grid_layout(
     window_width: f32,
     item_count: usize,
     icon_size: f32,
+    font_size: f32,
     _scale_factor: f32, // 将来的に DPI スケーリングに対応するための予約
 ) -> Vec<ItemLayout> {
     let mut layouts = Vec::with_capacity(item_count);
     
-    // アイコンサイズに基づいてセルサイズを決定するよ
+    // アイコンサイズとフォントサイズに基づいてセルサイズを決定するよ
     let cell_width = icon_size + 42.0; // 左右に余白を持たせる
-    let text_height = 20.0; // 固定、または icon_size に比例させる
-    let cell_height = icon_size + text_height + 16.0;
+    let text_height = font_size * 1.5; // 行間に余裕を持たせる
+    let cell_height = icon_size + text_height + 12.0;
 
     // 1列に何個入るか計算 (最低1列)
     let cols = ((window_width - PADDING) / cell_width).floor().max(1.0) as usize;

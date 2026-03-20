@@ -14,9 +14,12 @@ use crate::graphics::api::wic;
 pub struct DrawingResources {
     brushes: HashMap<String, ID2D1SolidColorBrush>,
     bitmaps: HashMap<usize, ID2D1Bitmap>,
-    dwrite_factory: IDWriteFactory1,
+    pub dwrite_factory: IDWriteFactory1,
     wic_factory: IWICImagingFactory,
     text_format: Option<IDWriteTextFormat>,
+    help_text_format: Option<IDWriteTextFormat>,
+    current_font_family: String,
+    current_font_size: f32,
 }
 
 impl DrawingResources {
@@ -28,7 +31,41 @@ impl DrawingResources {
             dwrite_factory,
             wic_factory,
             text_format: None,
+            help_text_format: None,
+            current_font_family: String::new(),
+            current_font_size: 0.0,
         }
+    }
+// ... (中略)
+    /// ヘルプ用のテキストフォーマットを取得するよ (折り返しあり)
+    pub fn get_help_text_format(&mut self, font_family: &str, font_size: f32) -> Result<IDWriteTextFormat, windows::core::Error> {
+        if let Some(format) = &self.help_text_format {
+            if self.current_font_family == font_family && self.current_font_size == font_size {
+                return Ok(format.clone());
+            }
+        }
+
+        let family_wide = crate::win32::api::utils::to_wide(font_family);
+        let format: IDWriteTextFormat = unsafe {
+            let f = self.dwrite_factory.CreateTextFormat(
+                windows::core::PCWSTR::from_raw(family_wide.as_ptr()),
+                None,
+                DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                font_size,
+                windows::core::w!("ja-jp"),
+            )?;
+            // ヘルプ用なので左寄せ・上寄せ
+            f.SetTextAlignment(windows::Win32::Graphics::DirectWrite::DWRITE_TEXT_ALIGNMENT_LEADING)?;
+            f.SetParagraphAlignment(windows::Win32::Graphics::DirectWrite::DWRITE_PARAGRAPH_ALIGNMENT_NEAR)?;
+            // 折り返しを有効にする
+            f.SetWordWrapping(windows::Win32::Graphics::DirectWrite::DWRITE_WORD_WRAPPING_WRAP)?;
+            f
+        };
+
+        self.help_text_format = Some(format.clone());
+        Ok(format)
     }
 
     /// 指定されたカラーコードからブラシを取得するよ。
@@ -42,7 +79,7 @@ impl DrawingResources {
         }
 
         let color = parse_hex_to_d2d_color(color_hex);
-        
+
         let brush = unsafe {
             let rt: ID2D1RenderTarget = context.cast()?;
             rt.CreateSolidColorBrush(&color, None)?
@@ -52,39 +89,46 @@ impl DrawingResources {
     }
 
     /// デフォルトのテキストフォーマットを取得するよ。
-    pub fn get_text_format(&mut self) -> Result<IDWriteTextFormat, windows::core::Error> {
+    pub fn get_text_format(&mut self, font_family: &str, font_size: f32) -> Result<IDWriteTextFormat, windows::core::Error> {
+        // フォント情報が変わっていない場合はキャッシュを返すよ
         if let Some(format) = &self.text_format {
-            return Ok(format.clone());
+            if self.current_font_family == font_family && self.current_font_size == font_size {
+                return Ok(format.clone());
+            }
         }
 
+        // フォント情報を更新して新しく作成するよ
+        let family_wide = crate::win32::api::utils::to_wide(font_family);
         let format: IDWriteTextFormat = unsafe {
             let f = self.dwrite_factory.CreateTextFormat(
-                windows::core::w!("Segoe UI"),
+                windows::core::PCWSTR::from_raw(family_wide.as_ptr()),
                 None,
                 DWRITE_FONT_WEIGHT_NORMAL,
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
-                12.0,
+                font_size,
                 windows::core::w!("ja-jp"),
             )?;
             f.SetTextAlignment(windows::Win32::Graphics::DirectWrite::DWRITE_TEXT_ALIGNMENT_CENTER)?;
             f.SetParagraphAlignment(windows::Win32::Graphics::DirectWrite::DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
-            
+
             // 1行に収めるための設定 (WordWrap を無効にし, Trimming を有効にする)
             f.SetWordWrapping(windows::Win32::Graphics::DirectWrite::DWRITE_WORD_WRAPPING_NO_WRAP)?;
-            
-            let mut trimming = windows::Win32::Graphics::DirectWrite::DWRITE_TRIMMING {
+
+            let trimming = windows::Win32::Graphics::DirectWrite::DWRITE_TRIMMING {
                 granularity: windows::Win32::Graphics::DirectWrite::DWRITE_TRIMMING_GRANULARITY_CHARACTER,
                 delimiter: 0,
                 delimiterCount: 0,
             };
             let sign = self.dwrite_factory.CreateEllipsisTrimmingSign(&f)?;
             f.SetTrimming(&trimming, Some(&sign))?;
-            
+
             f
         };
 
         self.text_format = Some(format.clone());
+        self.current_font_family = font_family.to_string();
+        self.current_font_size = font_size;
         Ok(format)
     }
 
