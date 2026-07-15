@@ -6,7 +6,7 @@ use std::{
 use super::models::Settings;
 
 /// 設定ファイルの保存先ディレクトリを解決するよ！
-/// `%APPDATA%/DesktopGrouping` を使うように変更するね。
+/// `%APPDATA%/Fencery` を使うように変更するね。
 fn get_settings_dir() -> io::Result<PathBuf> {
     // 実行ファイルの隣ではなく, 標準的な設定保存場所を取得するよ
     let mut path = if let Ok(appdata) = std::env::var("APPDATA") {
@@ -16,14 +16,14 @@ fn get_settings_dir() -> io::Result<PathBuf> {
         let exe_path = std::env::current_exe()?;
         exe_path.parent().unwrap().to_path_buf()
     };
-    
-    path.push("DesktopGrouping");
-    
+
+    path.push("Fencery");
+
     // ディレクトリがなければ作成するよ！
     if !path.exists() {
         fs::create_dir_all(&path)?;
     }
-    
+
     Ok(path)
 }
 
@@ -36,7 +36,7 @@ pub fn get_config_path() -> io::Result<PathBuf> {
 /// 読み込みに失敗した場合は Error を返して, デフォルト値を勝手に返さないようにするね。
 pub fn load_settings() -> Result<Settings, String> {
     let config_path = get_config_path().map_err(|e| e.to_string())?;
-    
+
     if !config_path.exists() {
         log::info!("Config file not found. Using default settings.");
         return Ok(Settings::default());

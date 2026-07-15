@@ -25,7 +25,7 @@ pub fn run_message_loop(engine: Rc<GraphicsEngine>) -> Result<(), windows::core:
 
         // 1. ウィンドウクラスを1回だけ登録する
         let instance = GetModuleHandleW(None)?;
-        let class_name_str = "DesktopGroupingGroupClass";
+        let class_name_str = "FenceryGroupClass";
         let class_name = api::utils::to_wide(class_name_str);
         let class_pcwstr = PCWSTR::from_raw(class_name.as_ptr());
 

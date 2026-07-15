@@ -42,7 +42,7 @@ pub fn create_tray() -> TrayIcon {
         // さっき作ったメニューを、トレイアイコンにセット！
         .with_menu(Box::new(menu))
         // マウスを乗せた時に出る説明文（ツールチップ）も設定するよ！
-        .with_tooltip("Desktop Grouping")
+        .with_tooltip("Fencery")
         // アプリのアイコンも忘れずに設定！リソースID 1番のアイコンを使うんだね！(・∀・)
         .with_icon(Icon::from_resource(1, None).unwrap())
         .build()

@@ -233,25 +233,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
-name = "desktop_grouping"
-version = "3.0.0"
-dependencies = [
- "arboard",
- "chrono",
- "colorsys",
- "embed-resource",
- "env_logger",
- "log",
- "rand",
- "scopeguard",
- "serde",
- "tempfile",
- "toml",
- "tray-icon",
- "windows",
-]
-
-[[package]]
 name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -340,6 +321,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
+]
+
+[[package]]
+name = "fencery"
+version = "3.0.0"
+dependencies = [
+ "arboard",
+ "chrono",
+ "colorsys",
+ "embed-resource",
+ "env_logger",
+ "log",
+ "rand",
+ "scopeguard",
+ "serde",
+ "tempfile",
+ "toml",
+ "tray-icon",
+ "windows",
 ]
 
 [[package]]

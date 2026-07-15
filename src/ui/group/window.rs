@@ -41,7 +41,7 @@ impl GroupWindow {
     ) -> Result<Box<Self>, windows::core::Error> {
         let instance = unsafe { GetModuleHandleW(None)? };
 
-        let class_name_str = "DesktopGroupingGroupClass";
+        let class_name_str = "FenceryGroupClass";
         let class_name = api::utils::to_wide(class_name_str);
         let window_name = api::utils::to_wide(&title);
         let class_pcwstr = PCWSTR::from_raw(class_name.as_ptr());
@@ -223,7 +223,7 @@ impl GroupWindow {
             InteractionAction::PasteColor => {
                 if let Some(text_raw) = api::utils::get_clipboard_text() {
                     let text = text_raw.trim().to_lowercase();
-                    
+
                     // 1. アイコンサイズ指定の解析 (例: size:64)
                     if text.starts_with("size:") {
                         if let Ok(size) = text["size:".len()..].parse::<f32>() {
@@ -263,14 +263,14 @@ impl GroupWindow {
             InteractionAction::ExecuteIcon { index } => {
                 // 先にパスだけを取得して, self への借用を終わらせるよ
                 let maybe_path = self.model.icons.get(index).map(|i| i.path.clone());
-                
+
                 if let Some(path) = maybe_path {
                     // ここからは &mut self を自由に使えるよ
                     self.model.executing_index = Some(index);
                     self.draw()?;
-                    
+
                     unsafe { SetTimer(self.hwnd, IDT_EXECUTE_FLASH, 150, None); }
-                    
+
                     log::info!("Executing: {:?}", path);
                     api::shell::execute_path(&path)?;
                 }

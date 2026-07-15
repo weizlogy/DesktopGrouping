@@ -4,7 +4,7 @@ use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWLP_USERDATA, HWND_BOTTOM, SWP_NOACTIVATE,
-    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WS_VISIBLE, 
+    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WS_VISIBLE,
     GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
 };
 use crate::graphics::GraphicsEngine;
@@ -27,8 +27,8 @@ pub struct HelpWindow {
 impl HelpWindow {
     pub fn create(engine: Rc<GraphicsEngine>) -> Result<Box<Self>, windows::core::Error> {
         let instance = unsafe { GetModuleHandleW(None)? };
-        let class_name = api::utils::to_wide("DesktopGroupingGroupClass");
-        let window_name = api::utils::to_wide("Desktop Grouping Help");
+        let class_name = api::utils::to_wide("FenceryGroupClass");
+        let window_name = api::utils::to_wide("Fencery Help");
         let class_pcwstr = PCWSTR::from_raw(class_name.as_ptr());
         let window_pcwstr = PCWSTR::from_raw(window_name.as_ptr());
 
@@ -95,7 +95,7 @@ impl HelpWindow {
     pub fn handle_lbutton_down(&mut self, x: i32, y: i32) {
         use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL};
         let ctrl_down = unsafe { (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
-        
+
         if ctrl_down {
             self.is_dragging = true;
             self.last_mouse_pos = (x, y);

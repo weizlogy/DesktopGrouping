@@ -1,12 +1,12 @@
 [package]
-name = "desktop_grouping"
+name = "fencery"
 version = "3.0.0"
 edition = "2024"
 license = "MIT"
 homepage = "https://blog.weizlogy.com/software/2024/10/25/desktopgrouping.html"
-repository = "https://github.com/weizlogy/Desktop-Grouping"
+repository = "https://github.com/weizlogy/Fencery"
 readme = "README.md"
-description = "DesktopGrouping is a utility for Windows that helps to organize icons on the desktop like Fences and very simple style."
+description = "Fencery is a utility for Windows that helps to organize icons on the desktop like Fences and very simple style."
 authors = ["weizlogy"]
 
 [dependencies]
